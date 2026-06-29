@@ -1,0 +1,1110 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no, maximum-scale=1.0">
+<title>現況図兼求積図 ─ 解体工事</title>
+<!-- PWA / iPad アプリ風 -->
+<meta name="theme-color" content="#0ABAB5">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="求積図">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<style>
+  /* ===== 大建 提案書型：黒主体＋ティファニーブルー(罫線アクセントのみ) ===== */
+  :root{
+    --ink:#1a1a1a; --accent:#0ABAB5; --grid:#e3e7e8;
+    --panel:#f7f8f8; --line:#dfe4e4; --muted:#888;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0; font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;
+    color:var(--ink); background:#fff; display:flex; height:100vh; overflow:hidden;
+    -webkit-user-select:none; user-select:none;
+  }
+
+  /* ===== 左パレット ===== */
+  #palette{width:222px; flex:none; background:var(--panel); border-right:1px solid var(--line);
+    padding:12px; overflow-y:auto;}
+  #palette h2{font-size:11.5px; margin:14px 0 6px; letter-spacing:.05em; color:#666;}
+  #palette h2:first-child{margin-top:0;}
+  .tool-btn{display:block; width:100%; text-align:left; padding:8px 10px; margin:3px 0;
+    background:#fff; border:1px solid var(--line); border-radius:6px; cursor:pointer;
+    font-size:12.5px; color:var(--ink); transition:.12s;}
+  .tool-btn:hover{border-color:var(--accent);}
+  .tool-btn.active{border-color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent);}
+  .row{display:flex; gap:5px; flex-wrap:wrap;}
+  .row .tool-btn{flex:1; min-width:0; text-align:center; padding:7px 3px; font-size:12px;}
+  .grid3{display:grid; grid-template-columns:1fr 1fr; gap:5px;}
+  .grid3 .tool-btn{text-align:center; padding:7px 3px; font-size:12px;}
+  .hint{font-size:10.5px; color:var(--muted); line-height:1.55; margin-top:4px;}
+  select, input[type=number], input[type=text]{
+    font-size:12.5px; padding:5px 6px; border:1px solid var(--line); border-radius:5px;
+    color:var(--ink); background:#fff; width:100%;}
+  .fld{margin:5px 0;}
+  .fld label{font-size:11px; color:#666; display:block; margin-bottom:2px;}
+  .fld2{display:flex; gap:6px;}
+  .fld2 > div{flex:1;}
+
+  /* ===== ステージ ===== */
+  #stage{flex:1; display:flex; flex-direction:column; min-width:0; position:relative; background:#fff;}
+  #topbar{height:48px; flex:none; display:flex; align-items:center; gap:10px; padding:0 14px;
+    background:#fff; border-bottom:1px solid #eee;}
+  #topbar .title{font-size:14px; font-weight:600; white-space:nowrap;}
+  #topbar .spacer{flex:1;}
+  #topbar .grp{display:flex; align-items:center; gap:6px;}
+  #topbar button{padding:6px 10px; border:1px solid var(--line); background:#fff; border-radius:6px;
+    cursor:pointer; font-size:12.5px; color:var(--ink);}
+  #topbar button:hover{border-color:var(--accent);}
+  #topbar button:disabled{opacity:.38; cursor:default; border-color:var(--line);}
+  #topbar label{font-size:12px; color:#555; display:flex; align-items:center; gap:4px; cursor:pointer; white-space:nowrap;}
+
+  #panes{flex:1; display:flex; gap:0; min-height:0;}
+  .pane{flex:1; min-width:0; position:relative; display:flex; flex-direction:column;
+    border-right:1px solid #eee;}
+  .pane:last-child{border-right:none;}
+  .pane > header{height:26px; flex:none; display:flex; align-items:center; padding:0 10px;
+    font-size:12px; color:#555; border-bottom:1px solid #f0f0f0; background:#fcfdfd;}
+  .pane.active > header{color:var(--ink); font-weight:600;}
+  .pane.active{box-shadow:inset 0 0 0 2px rgba(10,186,181,.45);}
+  .pane .canvas-wrap{flex:1; position:relative; overflow:hidden;}
+  .pane svg{display:block; width:100%; height:100%; cursor:crosshair; touch-action:none;}
+  html,body{overscroll-behavior:none;}
+
+  /* ===== 求積表パネル ===== */
+  #tablepanel{flex:none; max-height:200px; overflow:auto; border-top:1px solid var(--line);
+    background:#fcfdfd; padding:8px 14px; font-size:12px;}
+  #tablepanel.collapsed{display:none;}
+  .qtables{display:flex; gap:24px; flex-wrap:wrap;}
+  .qt{min-width:240px;}
+  .qt h3{font-size:12px; margin:0 0 4px; color:#555;}
+  table.area{border-collapse:collapse; width:100%;}
+  table.area td, table.area th{padding:3px 8px; text-align:left; font-size:12px;}
+  table.area th{color:#777; font-weight:500; border-bottom:1px solid var(--line);}
+  table.area td.num{text-align:right; font-variant-numeric:tabular-nums;}
+  table.area tr.sum td{border-top:1px solid var(--accent); font-weight:700;}
+  .bldsum{margin-top:6px; font-weight:700;}
+  .bldsum b{color:var(--ink);}
+
+  #props{border-top:1px solid var(--line); margin-top:12px; padding-top:10px;}
+  #props.hidden{display:none;}
+  #statusbar{position:absolute; left:0; bottom:0; font-size:11px; color:var(--muted);
+    background:rgba(255,255,255,.9); padding:3px 8px; pointer-events:none;}
+</style>
+</head>
+<body>
+
+<!-- ===== 左パレット ===== -->
+<div id="palette">
+  <h2>ツール</h2>
+  <button class="tool-btn" data-tool="select">▱ 選択 / 移動</button>
+  <button class="tool-btn" data-tool="rect">□ 矩形（ドラッグ）</button>
+  <button class="tool-btn" data-tool="poly">⬡ 多角形（線分コマンド）</button>
+  <div class="hint" id="tool-hint">連続クリックで折れ線→始点クリック / ダブルクリック / 右クリック / Enter で閉じる。Backspace=1点戻る、Esc=中止。</div>
+
+  <h2>寸法</h2>
+  <button class="tool-btn" data-tool="edgedim">— 辺寸法（辺をクリック）</button>
+  <button class="tool-btn" data-tool="effdim">↔ 有効寸法（2点指定）</button>
+
+  <h2>図面設定</h2>
+  <div class="fld">
+    <label>グリッド間隔（モジュール）</label>
+    <select id="grid-mod">
+      <option value="910">910mm（関東間）</option>
+      <option value="950">950mm</option>
+      <option value="985">985mm</option>
+      <option value="1000">1000mm（メーター）</option>
+      <option value="custom">自由入力…</option>
+    </select>
+    <div class="fld" id="grid-custom-wrap" style="display:none; margin-top:5px;">
+      <label>グリッド間隔(mm)</label>
+      <input type="number" id="grid-custom" value="910" min="1">
+    </div>
+    <div class="fld" style="margin-top:6px;">
+      <label>グリッドの分割</label>
+      <select id="grid-div">
+        <option value="1">分割なし</option>
+        <option value="2">1/2</option>
+        <option value="3">1/3</option>
+        <option value="4">1/4</option>
+      </select>
+    </div>
+  </div>
+
+  <h2>敷地・注記（概要でOK）</h2>
+  <button class="tool-btn" data-tool="site">▭ 敷地線（線分・ざっくり）</button>
+  <button class="tool-btn" data-tool="text">A 文字注記（前面道路など）</button>
+  <div class="hint">敷地は厳密でなく概形でOK。閉じれば外形線になります（求積には入りません）。文字はクリックで置いて後から編集。</div>
+
+  <h2>撤去関連シンボル</h2>
+  <div class="grid3" id="symbol-pal"></div>
+  <div class="hint">クリックで選択→図面をクリックで配置。ブロック塀は始点・終点の2クリック。選択中に R で90°回転。</div>
+
+  <!-- 選択中プロパティ -->
+  <div id="props" class="hidden">
+    <h2>選択中の編集</h2>
+    <div id="props-body"></div>
+    <button class="tool-btn" id="del-btn" style="margin-top:8px;">削除（Delete）</button>
+  </div>
+</div>
+
+<!-- ===== ステージ ===== -->
+<div id="stage">
+  <div id="topbar">
+    <span class="title">現況図兼求積図</span>
+    <span class="grp">
+      <button id="undo-btn" title="戻る (⌘Z)">↩ 戻る</button>
+      <button id="redo-btn" title="進む (⌘⇧Z)">↪ 進む</button>
+    </span>
+    <span class="grp">
+      <button id="zoom-out">－</button>
+      <button id="zoom-in">＋</button>
+      <button id="zoom-fit">全体</button>
+    </span>
+    <span class="spacer"></span>
+    <label><input type="checkbox" id="show-grid" checked> 方眼</label>
+    <label><input type="checkbox" id="show-dim" checked> 寸法</label>
+    <label><input type="checkbox" id="show-table" checked> 求積表</label>
+    <span class="grp">
+      <button id="print-btn">印刷（A3/A4）</button>
+      <button id="export-btn">SVG書き出し</button>
+      <button id="clear-btn">全消去</button>
+    </span>
+  </div>
+
+  <div id="panes">
+    <section class="pane" data-floor="0">
+      <header>1階</header>
+      <div class="canvas-wrap"><svg xmlns="http://www.w3.org/2000/svg"></svg></div>
+    </section>
+    <section class="pane" data-floor="1">
+      <header>2階</header>
+      <div class="canvas-wrap"><svg xmlns="http://www.w3.org/2000/svg"></svg></div>
+    </section>
+  </div>
+
+  <div id="tablepanel"></div>
+  <div id="statusbar"></div>
+</div>
+
+<script>
+"use strict";
+const SVGNS='http://www.w3.org/2000/svg';
+
+/* ===== 配色（SVG要素はCSS変数でなく実色：書き出しでも崩れない） ===== */
+const COL={ ink:'#1a1a1a', accent:'#0ABAB5', grid:'#e3e7e8', gridSub:'#eef1f1',
+  fill:'rgba(10,186,181,0.05)', sel:'#0ABAB5', dim:'#0ABAB5', hatch:'#1a1a1a', muted:'#888' };
+
+/* =========================================================================
+   1. データモデル（シリアライズ可能な JSON）
+   ========================================================================= */
+let project = newProject();
+function newProject(){
+  return {
+    meta:{ title:'', address:'', date:'', scale_hint:'' },
+    floors:[ newFloor('f1','1階'), newFloor('f2','2階') ],
+    view:{ scale:30/910, tx:90, ty:80 },
+    settings:{ gridMod:910, gridDiv:1, showGrid:true, showDim:true, showTable:true }
+  };
+}
+function newFloor(id,name){ return { id, name, shapes:[], symbols:[], effdims:[], texts:[] }; }
+
+const view = project.view;          // 表示変換（2ペイン連動）
+const settings = project.settings;
+
+let uid=1; const nextId=()=>'e'+(uid++);
+
+/* ===== シンボル定義（撤去数量属性 qty_attr を最初から持たせる） ===== */
+const SYMBOL_DEFS = {
+  block_wall:{ label:'ブロック塀', mark:'塀', line:true,
+    attrs:[{k:'length_m',label:'長さ(m)',auto:true},{k:'height_m',label:'高さ(m)'},{k:'dan',label:'段数'}] },
+  well:{ label:'井戸', mark:'井',
+    attrs:[{k:'depth_m',label:'深さ(m)'},{k:'dia_mm',label:'径(mm)'}] },
+  water_meter:{ label:'水道ﾒｰﾀ', mark:'水',
+    attrs:[{k:'kokei_mm',label:'口径(mm)'}] },
+  elec_drop:{ label:'電気引込', mark:'電',
+    attrs:[{k:'kind',label:'引込種別',text:true}] },
+  septic:{ label:'浄化槽', mark:'浄', rectish:true,
+    attrs:[{k:'ninso',label:'人槽'},{k:'capacity_m3',label:'容量(m3)'}] },
+  vault_toilet:{ label:'便槽', mark:'便', rectish:true,
+    attrs:[{k:'capacity_m3',label:'容量(m3)'}] },
+  tree:{ label:'樹木', mark:'樹',
+    attrs:[{k:'species',label:'樹種',text:true},{k:'height_m',label:'高さ(m)'},{k:'mikishu_mm',label:'幹周(mm)'}] },
+};
+
+/* ===== UI状態（モデルには含めない一時状態） ===== */
+const ui = { tool:'select', selId:null, activeFloor:0, pinching:false,
+  pendingSymbol:null,            // シンボル配置待ちのキー
+  draft:null,                    // 多角形の作図中 {floor, verts:[], cursor}
+  lineDraft:null,                // ブロック塀 {floor, a}
+  effDraft:null };               // 有効寸法 {floor, a}
+
+/* =========================================================================
+   2. 幾何（座標法・スナップ・変換）
+   ========================================================================= */
+function sx(mm){ return mm*view.scale + view.tx; }
+function sy(mm){ return mm*view.scale + view.ty; }
+function mmX(px){ return (px-view.tx)/view.scale; }
+function mmY(px){ return (px-view.ty)/view.scale; }
+function snapStep(){ return settings.gridMod/settings.gridDiv; }
+function snap(mm){ const s=snapStep(); return Math.round(mm/s)*s; }
+function paneMm(svg, evt){ const r=svg.getBoundingClientRect();
+  return { x:mmX(evt.clientX-r.left), y:mmY(evt.clientY-r.top) }; }
+function paneMmSnap(svg, evt){ const p=paneMm(svg,evt); return { x:snap(p.x), y:snap(p.y) }; }
+function dist(a,b){ return Math.hypot(a.x-b.x,a.y-b.y); }
+
+// シューレース公式（mm²）
+function areaMm2(verts){ let s=0; const n=verts.length;
+  for(let i=0;i<n;i++){ const j=(i+1)%n; s+=verts[i].x*verts[j].y - verts[j].x*verts[i].y; }
+  return Math.abs(s)/2; }
+function m2(mm2){ return mm2/1e6; }
+function round2(n){ return Math.round(n*100)/100; }
+function fmt2(n){ return round2(n).toFixed(2); }
+function centroid(verts){ let x=0,y=0; verts.forEach(v=>{x+=v.x;y+=v.y;}); return {x:x/verts.length,y:y/verts.length}; }
+function rectVerts(a,b){ const x1=Math.min(a.x,b.x),x2=Math.max(a.x,b.x),y1=Math.min(a.y,b.y),y2=Math.max(a.y,b.y);
+  return [{x:x1,y:y1},{x:x2,y:y1},{x:x2,y:y2},{x:x1,y:y2}]; }
+
+/* =========================================================================
+   3. SVG小道具
+   ========================================================================= */
+function el(name,attrs={}){ const e=document.createElementNS(SVGNS,name);
+  for(const k in attrs) e.setAttribute(k,attrs[k]); return e; }
+function line(x1,y1,x2,y2,stroke,w,extra){ return el('line',Object.assign({x1,y1,x2,y2,stroke,'stroke-width':w},extra||{})); }
+function txt(x,y,s,cls){ const t=el('text',{x,y,'font-size':cls&&cls.size||11,fill:cls&&cls.fill||COL.ink,
+  'text-anchor':cls&&cls.anchor||'middle','dominant-baseline':cls&&cls.base||'auto'});
+  if(cls&&cls.weight) t.setAttribute('font-weight',cls.weight);
+  if(cls&&cls.rot) t.setAttribute('transform',`rotate(${cls.rot} ${x} ${y})`);
+  t.textContent=s; return t; }
+
+/* =========================================================================
+   4. 履歴（アプリ内の 戻る／進む）
+   ========================================================================= */
+let undoStack=[], redoStack=[];
+function floorsJSON(){ return JSON.stringify(project.floors); }
+function pushUndo(){ undoStack.push(floorsJSON()); if(undoStack.length>120) undoStack.shift(); redoStack.length=0; refreshUndoButtons(); }
+function applyFloors(json){ project.floors=JSON.parse(json); ui.selId=null; ui.draft=null; ui.lineDraft=null; ui.effDraft=null; }
+function undo(){ if(!undoStack.length)return; redoStack.push(floorsJSON()); applyFloors(undoStack.pop()); render(); save(); refreshUndoButtons(); }
+function redo(){ if(!redoStack.length)return; undoStack.push(floorsJSON()); applyFloors(redoStack.pop()); render(); save(); refreshUndoButtons(); }
+function refreshUndoButtons(){ document.getElementById('undo-btn').disabled=!undoStack.length;
+  document.getElementById('redo-btn').disabled=!redoStack.length; }
+
+/* ===== localStorage 自動保存（作業継続用） ===== */
+const LS_KEY='kyuseki_v1';
+function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(project)); }catch(e){} }
+function load(){ try{ const s=localStorage.getItem(LS_KEY); if(!s)return false;
+  const p=JSON.parse(s); if(!p||!p.floors)return false;
+  project=p; Object.assign(view, p.view||{}); Object.assign(settings, p.settings||{});
+  // uid を既存最大+1へ
+  let mx=0; const scan=a=>a.forEach(o=>{const n=+String(o.id).replace(/\D/g,''); if(n>mx)mx=n;});
+  p.floors.forEach(f=>{scan(f.shapes);scan(f.symbols);scan(f.effdims);}); uid=mx+1;
+  return true; }catch(e){ return false; } }
+
+/* =========================================================================
+   5. ペイン / レンダリング
+   ========================================================================= */
+const panes = [...document.querySelectorAll('.pane')].map(p=>({
+  el:p, floor:+p.dataset.floor, svg:p.querySelector('svg') }));
+
+function render(){
+  panes.forEach(drawPane);
+  panes.forEach(p=>p.el.classList.toggle('active', p.floor===ui.activeFloor));
+  renderTables();
+  updateProps();
+  refreshUndoButtons();
+  document.getElementById('statusbar').textContent = statusText();
+}
+
+function statusText(){
+  const names={select:'選択/移動', rect:'矩形', poly:'多角形', edgedim:'辺寸法', effdim:'有効寸法'};
+  let s='ツール：'+(ui.pendingSymbol? ('シンボル配置 '+SYMBOL_DEFS[ui.pendingSymbol].label):(names[ui.tool]||ui.tool));
+  if(ui.draft) s+=` ／ 多角形 作図中：${ui.draft.verts.length}点`;
+  return s;
+}
+
+function drawPane(pane){
+  const svg=pane.svg, floor=project.floors[pane.floor];
+  while(svg.firstChild) svg.removeChild(svg.firstChild);
+  const W=svg.clientWidth||svg.parentNode.clientWidth, H=svg.clientHeight||svg.parentNode.clientHeight;
+
+  if(settings.showGrid) drawGrid(svg,W,H);
+
+  // 図形
+  floor.shapes.forEach(s=>drawShape(svg,pane,s));
+  // 有効寸法
+  if(settings.showDim) floor.effdims.forEach(d=>drawEffDim(svg,pane,d));
+  // シンボル
+  floor.symbols.forEach(sym=>drawSymbol(svg,pane,sym));
+  // 文字注記
+  floor.texts.forEach(t=>drawText(svg,pane,t));
+  // 作図中プレビュー
+  if(ui.draft && ui.draft.floor===pane.floor) drawDraft(svg);
+  if(ui.lineDraft && ui.lineDraft.floor===pane.floor && ui.lineDraft.cursor)
+    svg.appendChild(line(sx(ui.lineDraft.a.x),sy(ui.lineDraft.a.y),sx(ui.lineDraft.cursor.x),sy(ui.lineDraft.cursor.y),COL.accent,1.4,{'stroke-dasharray':'4 3'}));
+  if(ui.effDraft && ui.effDraft.floor===pane.floor && ui.effDraft.cursor)
+    svg.appendChild(line(sx(ui.effDraft.a.x),sy(ui.effDraft.a.y),sx(ui.effDraft.cursor.x),sy(ui.effDraft.cursor.y),COL.accent,1,{'stroke-dasharray':'3 3'}));
+}
+
+function drawGrid(svg,W,H){
+  const g=settings.gridMod, div=settings.gridDiv;
+  const stepPx=g*view.scale;
+  const x0=mmX(0), x1=mmX(W), y0=mmY(0), y1=mmY(H);
+  if(div>1 && stepPx/div>=4){
+    const sub=g/div;
+    for(let k=Math.floor(x0/sub);k<=Math.ceil(x1/sub);k++) svg.appendChild(line(sx(k*sub),0,sx(k*sub),H,COL.gridSub,0.6));
+    for(let k=Math.floor(y0/sub);k<=Math.ceil(y1/sub);k++) svg.appendChild(line(0,sy(k*sub),W,sy(k*sub),COL.gridSub,0.6));
+  }
+  if(stepPx>=3){
+    for(let k=Math.floor(x0/g);k<=Math.ceil(x1/g);k++) svg.appendChild(line(sx(k*g),0,sx(k*g),H,COL.grid,1));
+    for(let k=Math.floor(y0/g);k<=Math.ceil(y1/g);k++) svg.appendChild(line(0,sy(k*g),W,sy(k*g),COL.grid,1));
+  }
+}
+
+function drawShape(svg,pane,s){
+  const sel = ui.selId===s.id;
+  // 敷地線：細い黒の外形線のみ（塗り・面積・名前は出さない／求積に入れない）
+  if(s.kind==='site'){
+    const sp=s.verts.map(v=>`${sx(v.x)},${sy(v.y)}`).join(' ');
+    const poly=el('polygon',{points:sp,fill:'none',stroke:sel?COL.sel:COL.ink,'stroke-width':sel?1.6:1,'stroke-linejoin':'round'});
+    poly.style.cursor='move'; svg.appendChild(poly);
+    poly.addEventListener('pointerdown',e=>{ if(ui.tool!=='select')return; e.stopPropagation(); selectEl(s.id,pane.floor);
+      pushUndo(); const orig=s.verts.map(v=>({x:v.x,y:v.y})); const start=paneMm(pane.svg,e);
+      drag(pane.svg,p=>{ const dx=snap(p.x-start.x),dy=snap(p.y-start.y); s.verts=orig.map(v=>({x:v.x+dx,y:v.y+dy})); render(); }); });
+    if(sel && ui.tool==='select') s.verts.forEach((v,i)=>{
+      const h=el('rect',{x:sx(v.x)-5,y:sy(v.y)-5,width:10,height:10,fill:'#fff',stroke:COL.accent,'stroke-width':1.5}); h.style.cursor='pointer';
+      h.addEventListener('pointerdown',e=>{ e.stopPropagation(); pushUndo(); drag(pane.svg,p=>{ s.verts[i]={x:snap(p.x),y:snap(p.y)}; render(); }); });
+      svg.appendChild(h);
+    });
+    return;
+  }
+  const pts = s.verts.map(v=>`${sx(v.x)},${sy(v.y)}`).join(' ');
+  const poly = el('polygon',{ points:pts, fill:COL.fill, stroke:COL.ink, 'stroke-width':sel?2.4:1.5,
+    'stroke-linejoin':'round' });
+  if(sel) poly.setAttribute('stroke',COL.sel);
+  poly.style.cursor='move';
+  svg.appendChild(poly);
+
+  // 移動ドラッグ（選択ツール時）
+  poly.addEventListener('pointerdown',e=>{
+    if(ui.tool!=='select') return;
+    e.stopPropagation(); selectEl(s.id,pane.floor);
+    pushUndo(); const orig=s.verts.map(v=>({x:v.x,y:v.y})); const start=paneMm(pane.svg,e);
+    drag(pane.svg,(p)=>{ const dx=snap(p.x-start.x),dy=snap(p.y-start.y);
+      s.verts=orig.map(v=>({x:v.x+dx,y:v.y+dy})); render(); });
+  });
+
+  // 辺寸法ツール：辺クリックでトグル
+  if(ui.tool==='edgedim'){
+    for(let i=0;i<s.verts.length;i++){ const a=s.verts[i],b=s.verts[(i+1)%s.verts.length];
+      const hit=line(sx(a.x),sy(a.y),sx(b.x),sy(b.y),'transparent',12); hit.style.cursor='pointer';
+      hit.addEventListener('pointerdown',e=>{ e.stopPropagation(); pushUndo();
+        const idx=s.edgeDims.indexOf(i); if(idx>=0)s.edgeDims.splice(idx,1); else s.edgeDims.push(i);
+        render(); save(); });
+      svg.appendChild(hit);
+    }
+  }
+
+  // 辺寸法表示
+  if(settings.showDim) s.edgeDims.forEach(i=>{
+    const a=s.verts[i],b=s.verts[(i+1)%s.verts.length]; drawEdgeDim(svg,a,b);
+  });
+
+  // 区画名＋面積
+  const c=centroid(s.verts);
+  svg.appendChild(txt(sx(c.x),sy(c.y)-3,s.name||'区画',{base:'middle',weight:600,size:13}));
+  svg.appendChild(txt(sx(c.x),sy(c.y)+13,fmt2(m2(areaMm2(s.verts)))+' m²',{base:'middle',size:11,fill:COL.muted}));
+
+  // 頂点ハンドル（選択中・選択ツール）
+  if(sel && ui.tool==='select'){
+    s.verts.forEach((v,i)=>{
+      const h=el('rect',{x:sx(v.x)-5,y:sy(v.y)-5,width:10,height:10,fill:'#fff',stroke:COL.accent,'stroke-width':1.5});
+      h.style.cursor='pointer';
+      h.addEventListener('pointerdown',e=>{ e.stopPropagation(); pushUndo();
+        const opp = s.kind==='rect' ? s.verts[(i+2)%4] : null;
+        drag(pane.svg,(p)=>{ const sp={x:snap(p.x),y:snap(p.y)};
+          if(s.kind==='rect'){ s.verts=rectVerts(opp,sp); }
+          else { s.verts[i]={x:sp.x,y:sp.y}; }
+          render(); }); });
+      svg.appendChild(h);
+    });
+  }
+}
+
+function drawEdgeDim(svg,a,b){
+  const mx=(sx(a.x)+sx(b.x))/2, my=(sy(a.y)+sy(b.y))/2;
+  const ang=Math.atan2(sy(b.y)-sy(a.y),sx(b.x)-sx(a.x))*180/Math.PI;
+  svg.appendChild(line(sx(a.x),sy(a.y),sx(b.x),sy(b.y),COL.dim,1));
+  const len=Math.round(dist(a,b));
+  const t=txt(mx,my-4,len,{base:'auto',size:11});
+  t.setAttribute('transform',`rotate(${ang>90||ang<-90?ang+180:ang} ${mx} ${my})`);
+  svg.appendChild(t);
+}
+function drawEffDim(svg,pane,d){
+  svg.appendChild(line(sx(d.a.x),sy(d.a.y),sx(d.b.x),sy(d.b.y),COL.dim,1,{'stroke-dasharray':'5 2'}));
+  // 端のティック
+  [d.a,d.b].forEach(p=>svg.appendChild(el('circle',{cx:sx(p.x),cy:sy(p.y),r:2.5,fill:COL.accent})));
+  const mx=(sx(d.a.x)+sx(d.b.x))/2,my=(sy(d.a.y)+sy(d.b.y))/2;
+  svg.appendChild(txt(mx,my-4,Math.round(dist(d.a,d.b)),{base:'auto',size:11}));
+  // 選択ツールでクリック→選択
+  if(ui.tool==='select'){
+    const hit=line(sx(d.a.x),sy(d.a.y),sx(d.b.x),sy(d.b.y),'transparent',12); hit.style.cursor='move';
+    hit.addEventListener('pointerdown',e=>{ e.stopPropagation(); selectEl(d.id,pane.floor);
+      pushUndo(); const oa={...d.a},ob={...d.b},start=paneMm(pane.svg,e);
+      drag(pane.svg,p=>{ const dx=snap(p.x-start.x),dy=snap(p.y-start.y);
+        d.a={x:oa.x+dx,y:oa.y+dy}; d.b={x:ob.x+dx,y:ob.y+dy}; render(); }); });
+    svg.appendChild(hit);
+  }
+}
+
+function drawDraft(svg){
+  const v=ui.draft.verts; if(!v.length)return;
+  // 確定済みの辺＋長さ
+  for(let i=0;i<v.length-1;i++){ svg.appendChild(line(sx(v[i].x),sy(v[i].y),sx(v[i+1].x),sy(v[i+1].y),COL.ink,1.6));
+    drawEdgeDim(svg,v[i],v[i+1]); }
+  // ラバーバンド（最後→カーソル）
+  if(ui.draft.cursor){ const last=v[v.length-1];
+    svg.appendChild(line(sx(last.x),sy(last.y),sx(ui.draft.cursor.x),sy(ui.draft.cursor.y),COL.accent,1.4,{'stroke-dasharray':'4 3'}));
+    drawEdgeDim(svg,last,ui.draft.cursor);
+    // 始点クローズ可視化
+    if(v.length>=3 && dist(ui.draft.cursor,v[0])*view.scale<12)
+      svg.appendChild(el('circle',{cx:sx(v[0].x),cy:sy(v[0].y),r:7,fill:'none',stroke:COL.accent,'stroke-width':2}));
+  }
+  // 頂点
+  v.forEach(p=>svg.appendChild(el('circle',{cx:sx(p.x),cy:sy(p.y),r:3,fill:COL.accent})));
+}
+
+/* ===== シンボル描画 ===== */
+function symSizePx(sym){ return Math.max(16, Math.min(64, 800*view.scale*(sym.scale||1))); }
+function drawSymbol(svg,pane,sym){
+  const def=SYMBOL_DEFS[sym.type]; if(!def)return;
+  const sel=ui.selId===sym.id;
+  const g=el('g'); g.style.cursor='move';
+
+  if(def.line){
+    // ブロック塀：線＋ハッチ
+    const ax=sx(sym.a.x),ay=sy(sym.a.y),bx=sx(sym.b.x),by=sy(sym.b.y);
+    g.appendChild(line(ax,ay,bx,by,sel?COL.sel:COL.ink,sel?3:2));
+    const len=dist(sym.a,sym.b), n=Math.max(1,Math.floor(len/300));
+    const nx=(by-ay), ny=-(bx-ax), nl=Math.hypot(nx,ny)||1; const ux=nx/nl*5, uy=ny/nl*5;
+    for(let i=0;i<=n;i++){ const t=i/n, px=ax+(bx-ax)*t, py=ay+(by-ay)*t;
+      g.appendChild(line(px-ux,py-uy,px+ux,py+uy,COL.hatch,1)); }
+    g.appendChild(txt((ax+bx)/2,(ay+by)/2-7,def.mark,{base:'auto',size:11,fill:COL.ink}));
+    // 当たり判定
+    const hit=line(ax,ay,bx,by,'transparent',14);
+    bindSymbolDrag(hit,sym,pane); g.appendChild(hit);
+  } else {
+    const r=symSizePx(sym)/2, cx=sx(sym.x), cy=sy(sym.y);
+    const gg=el('g',{transform:`rotate(${sym.rot||0} ${cx} ${cy})`});
+    const stroke=sel?COL.sel:COL.ink, sw=sel?2.2:1.4;
+    if(sym.type==='well'){
+      gg.appendChild(el('circle',{cx,cy,r,fill:'#fff',stroke,'stroke-width':sw}));
+      gg.appendChild(el('circle',{cx,cy,r:r*0.62,fill:'none',stroke,'stroke-width':1}));
+    } else if(def.rectish){
+      gg.appendChild(el('rect',{x:cx-r*1.3,y:cy-r*0.8,width:r*2.6,height:r*1.6,rx:r*0.3,fill:'#fff',stroke,'stroke-width':sw}));
+    } else if(sym.type==='tree'){
+      gg.appendChild(el('circle',{cx,cy,r,fill:'#fff',stroke,'stroke-width':sw}));
+      gg.appendChild(line(cx,cy+r,cx,cy+r*1.5,stroke,sw));
+    } else if(sym.type==='elec_drop'){
+      gg.appendChild(el('circle',{cx,cy,r:r*0.8,fill:'#fff',stroke,'stroke-width':sw}));
+    } else { // water_meter ほか
+      gg.appendChild(el('rect',{x:cx-r*0.85,y:cy-r*0.85,width:r*1.7,height:r*1.7,rx:r*0.35,fill:'#fff',stroke,'stroke-width':sw}));
+    }
+    gg.appendChild(txt(cx,cy,def.mark,{base:'middle',size:Math.max(10,r*0.9),fill:COL.ink,weight:600}));
+    g.appendChild(gg);
+    const hit=el('circle',{cx,cy,r:Math.max(r,12),fill:'transparent'});
+    bindSymbolDrag(hit,sym,pane); g.appendChild(hit);
+  }
+  svg.appendChild(g);
+}
+function bindSymbolDrag(hit,sym,pane){
+  hit.style.cursor='move';
+  hit.addEventListener('pointerdown',e=>{ if(ui.tool!=='select')return; e.stopPropagation();
+    selectEl(sym.id,pane.floor); pushUndo(); const start=paneMm(pane.svg,e);
+    const def=SYMBOL_DEFS[sym.type];
+    const o = def.line ? {a:{...sym.a},b:{...sym.b}} : {x:sym.x,y:sym.y};
+    drag(pane.svg,p=>{ const dx=snap(p.x-start.x),dy=snap(p.y-start.y);
+      if(def.line){ sym.a={x:o.a.x+dx,y:o.a.y+dy}; sym.b={x:o.b.x+dx,y:o.b.y+dy}; }
+      else { sym.x=o.x+dx; sym.y=o.y+dy; } render(); }); });
+}
+
+/* ===== 文字注記 ===== */
+function drawText(svg,pane,t){
+  const sel=ui.selId===t.id;
+  const e=el('text',{x:sx(t.x),y:sy(t.y),'font-size':t.size||13,fill:sel?COL.sel:COL.ink,'text-anchor':'start'});
+  e.textContent=t.str||'文字'; e.style.cursor='move'; svg.appendChild(e);
+  e.addEventListener('pointerdown',ev=>{ if(ui.tool!=='select')return; ev.stopPropagation(); selectEl(t.id,pane.floor);
+    pushUndo(); const o={x:t.x,y:t.y}, start=paneMm(pane.svg,ev);
+    drag(pane.svg,p=>{ t.x=o.x+snap(p.x-start.x); t.y=o.y+snap(p.y-start.y); render(); }); });
+}
+
+/* ===== 汎用ドラッグ ===== */
+function drag(svg,onMove){
+  function mv(ev){ if(ui.pinching)return; onMove(paneMm(svg,ev)); }
+  function up(){ document.removeEventListener('pointermove',mv); document.removeEventListener('pointerup',up); save(); }
+  document.addEventListener('pointermove',mv); document.addEventListener('pointerup',up);
+}
+
+/* =========================================================================
+   6. 選択・削除
+   ========================================================================= */
+function findEl(id){ for(const f of project.floors){
+  let o=f.shapes.find(s=>s.id===id)||f.symbols.find(s=>s.id===id)||f.effdims.find(s=>s.id===id)||f.texts.find(s=>s.id===id);
+  if(o) return {o, floor:f}; } return null; }
+function selectEl(id,floorIdx){ ui.selId=id; if(floorIdx!=null)ui.activeFloor=floorIdx; render(); }
+function deleteSelected(){ if(!ui.selId)return; pushUndo();
+  project.floors.forEach(f=>{ f.shapes=f.shapes.filter(s=>s.id!==ui.selId);
+    f.symbols=f.symbols.filter(s=>s.id!==ui.selId); f.effdims=f.effdims.filter(s=>s.id!==ui.selId);
+    f.texts=f.texts.filter(s=>s.id!==ui.selId); });
+  ui.selId=null; render(); save(); }
+
+/* =========================================================================
+   7. ツール操作（ペインの mousedown / move / 右クリック）
+   ========================================================================= */
+panes.forEach(pane=>{
+  const svg=pane.svg;
+  svg.addEventListener('pointerdown',e=>{
+    if(e.button!==0)return;
+    ui.activeFloor=pane.floor;
+    const sp=paneMmSnap(svg,e);
+
+    // シンボル配置中
+    if(ui.pendingSymbol){
+      const def=SYMBOL_DEFS[ui.pendingSymbol];
+      if(def.line){
+        if(!ui.lineDraft){ ui.lineDraft={floor:pane.floor,a:sp,cursor:sp}; render(); }
+        else { pushUndo(); const f=project.floors[pane.floor];
+          f.symbols.push({id:nextId(),type:ui.pendingSymbol,a:ui.lineDraft.a,b:sp,rot:0,scale:1,qty_attr:{},note:''});
+          ui.lineDraft=null; setSymbol(null); ui.selId=f.symbols[f.symbols.length-1].id; render(); save(); }
+      } else {
+        pushUndo(); const f=project.floors[pane.floor];
+        f.symbols.push({id:nextId(),type:ui.pendingSymbol,x:sp.x,y:sp.y,rot:0,scale:1,qty_attr:{},note:''});
+        ui.selId=f.symbols[f.symbols.length-1].id; setSymbol(null); render(); save();
+      }
+      return;
+    }
+
+    // 文字注記：クリックで配置
+    if(ui.tool==='text'){
+      pushUndo(); const t={id:nextId(),x:sp.x,y:sp.y,str:'前面道路',size:13};
+      project.floors[pane.floor].texts.push(t); ui.selId=t.id; setTool('select'); render(); save(); return;
+    }
+
+    // 多角形 / 敷地線（同じ線分コマンドで描く）
+    if(ui.tool==='poly' || ui.tool==='site'){
+      if(!ui.draft){ ui.draft={floor:pane.floor,verts:[sp],cursor:sp,kind:(ui.tool==='site'?'site':'poly')}; }
+      else if(ui.draft.floor===pane.floor){
+        const v=ui.draft.verts;
+        if(v.length>=3 && dist(sp,v[0])*view.scale<12){ finalizePoly(); return; }
+        v.push(sp);
+      }
+      render(); return;
+    }
+
+    // 矩形：ドラッグで作成
+    if(ui.tool==='rect'){
+      pushUndo(); const f=project.floors[pane.floor];
+      const s={id:nextId(),kind:'rect',verts:rectVerts(sp,{x:sp.x+settings.gridMod,y:sp.y+settings.gridMod}),name:'区画',edgeDims:[]};
+      f.shapes.push(s); ui.selId=s.id; const start=sp;
+      drag(svg,p=>{ const cur={x:snap(p.x),y:snap(p.y)};
+        if(cur.x===start.x)cur.x=start.x+snapStep(); if(cur.y===start.y)cur.y=start.y+snapStep();
+        s.verts=rectVerts(start,cur); render(); });
+      render(); return;
+    }
+
+    // 有効寸法：2点
+    if(ui.tool==='effdim'){
+      if(!ui.effDraft){ ui.effDraft={floor:pane.floor,a:sp,cursor:sp}; }
+      else if(ui.effDraft.floor===pane.floor){ pushUndo();
+        project.floors[pane.floor].effdims.push({id:nextId(),a:ui.effDraft.a,b:sp}); ui.effDraft=null; }
+      render(); return;
+    }
+
+    // 選択ツール：空き＝パン＋選択解除
+    if(ui.tool==='select'){ ui.selId=null; startPan(svg,e); render(); }
+  });
+
+  // カーソル追従（プレビュー）
+  svg.addEventListener('pointermove',e=>{
+    const sp=paneMmSnap(svg,e);
+    if(ui.draft && ui.draft.floor===pane.floor){ ui.draft.cursor=sp; drawPane(pane); }
+    else if(ui.lineDraft && ui.lineDraft.floor===pane.floor){ ui.lineDraft.cursor=sp; drawPane(pane); }
+    else if(ui.effDraft && ui.effDraft.floor===pane.floor){ ui.effDraft.cursor=sp; drawPane(pane); }
+  });
+
+  // 右クリックで多角形を閉じる
+  svg.addEventListener('contextmenu',e=>{ if(ui.draft){ e.preventDefault(); finalizePoly(); } });
+
+  // ホイールズーム（カーソル中心）
+  svg.addEventListener('wheel',e=>{ e.preventDefault();
+    const r=svg.getBoundingClientRect(); const mx=e.clientX-r.left, my=e.clientY-r.top;
+    const f=e.deltaY<0?1.1:1/1.1; zoomAt(mx,my,f); },{passive:false});
+});
+
+function finalizePoly(){
+  if(!ui.draft)return; let v=ui.draft.verts.slice();
+  // 末尾の重複点を除去
+  while(v.length>=2 && dist(v[v.length-1],v[v.length-2])<1) v.pop();
+  if(v.length>=3){ pushUndo(); const kind=ui.draft.kind||'poly';
+    project.floors[ui.draft.floor].shapes.push({id:nextId(),kind:kind,verts:v,name:(kind==='site'?'敷地':'区画'),edgeDims:[]}); }
+  ui.draft=null; render(); save();
+}
+
+/* ===== ズーム / パン ===== */
+function zoomAt(px,py,f){ const mx=mmX(px),my=mmY(py);
+  view.scale*=f; view.tx=px-mx*view.scale; view.ty=py-my*view.scale; render(); save(); }
+function startPan(svg,e){ const r=svg.getBoundingClientRect();
+  const ox=view.tx,oy=view.ty,sx0=e.clientX,sy0=e.clientY; let moved=false;
+  function mv(ev){ moved=true; view.tx=ox+(ev.clientX-sx0); view.ty=oy+(ev.clientY-sy0); render(); }
+  function up(){ document.removeEventListener('pointermove',mv); document.removeEventListener('pointerup',up); if(moved)save(); }
+  document.addEventListener('pointermove',mv); document.addEventListener('pointerup',up);
+}
+function fitView(){
+  let minx=Infinity,miny=Infinity,maxx=-Infinity,maxy=-Infinity,any=false;
+  const eat=(x,y)=>{any=true; if(x<minx)minx=x; if(y<miny)miny=y; if(x>maxx)maxx=x; if(y>maxy)maxy=y;};
+  project.floors.forEach(f=>{ f.shapes.forEach(s=>s.verts.forEach(v=>eat(v.x,v.y)));
+    f.symbols.forEach(s=>{ if(s.a){eat(s.a.x,s.a.y);eat(s.b.x,s.b.y);} else eat(s.x,s.y); });
+    f.effdims.forEach(d=>{eat(d.a.x,d.a.y);eat(d.b.x,d.b.y);}); });
+  if(!any){ view.scale=30/910; view.tx=90; view.ty=80; render(); save(); return; }
+  const pad=40;
+  const w=panes[0].svg.clientWidth||panes[0].svg.parentNode.clientWidth||600;
+  const h=panes[0].svg.clientHeight||panes[0].svg.parentNode.clientHeight||500;
+  if(w<=2*pad+10 || h<=2*pad+10) return;   // コンテナ未確定なら何もしない
+  const bw=Math.max(1,maxx-minx),bh=Math.max(1,maxy-miny);
+  let sc=Math.min((w-2*pad)/bw,(h-2*pad)/bh);
+  if(!(sc>0)) sc=30/910;                    // 念のため正値を保証
+  view.scale=sc;
+  view.tx=pad-minx*view.scale; view.ty=pad-miny*view.scale; render(); save();
+}
+
+/* =========================================================================
+   8. 求積表
+   ========================================================================= */
+function renderTables(){
+  const panel=document.getElementById('tablepanel');
+  panel.classList.toggle('collapsed', !settings.showTable);
+  if(!settings.showTable){ panel.innerHTML=''; return; }
+  let total=0; let html='<div class="qtables">';
+  project.floors.forEach(f=>{
+    let sum=0;
+    const qs=f.shapes.filter(s=>s.kind!=='site');   // 敷地線は求積に含めない
+    let rows=qs.map(s=>{ const a=m2(areaMm2(s.verts)); sum+=a;
+      return `<tr><td>${esc(s.name||'区画')}</td><td class="num">${fmt2(a)}</td></tr>`; }).join('');
+    if(!qs.length) rows=`<tr><td colspan="2" style="color:#aaa">（区画なし）</td></tr>`;
+    total+=sum;
+    html+=`<div class="qt"><h3>${esc(f.name)} 求積表</h3><table class="area">
+      <tr><th>区画名</th><th class="num">面積(m²)</th></tr>${rows}
+      <tr class="sum"><td>${esc(f.name)} 計</td><td class="num">${fmt2(sum)}</td></tr></table></div>`;
+  });
+  html+='</div>';
+  html+=`<div class="bldsum">建物合計（1F＋2F）：<b>${fmt2(total)} m²</b></div>`;
+  panel.innerHTML=html;
+}
+function esc(s){ return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+/* =========================================================================
+   9. プロパティ欄
+   ========================================================================= */
+function updateProps(){
+  const box=document.getElementById('props'), body=document.getElementById('props-body');
+  const hit=ui.selId&&findEl(ui.selId);
+  if(!hit){ box.classList.add('hidden'); return; }
+  box.classList.remove('hidden'); body.innerHTML='';
+  const o=hit.o;
+
+  if('str' in o){ // 文字注記
+    body.appendChild(field('文字', o.str||'','text',v=>{ pushUndo(); o.str=v; render(); save(); }));
+    body.appendChild(field('文字サイズ', o.size||13,'number',v=>{ pushUndo(); o.size=Math.max(6,+v||13); render(); save(); }));
+  } else if(o.kind==='site'){ // 敷地線
+    const info=document.createElement('div'); info.className='hint';
+    info.textContent='敷地外形線（概形・求積には含めません）'; body.appendChild(info);
+  } else if('verts' in o){ // 図形
+    body.appendChild(field('区画名', o.name||'区画','text',v=>{ pushUndo(); o.name=v; render(); save(); }));
+    if(o.kind==='rect'){
+      const w=Math.abs(o.verts[1].x-o.verts[0].x), d=Math.abs(o.verts[3].y-o.verts[0].y);
+      body.appendChild(field2('幅(mm)',Math.round(w),'奥行(mm)',Math.round(d),
+        nw=>{ pushUndo(); const tl=o.verts[0]; o.verts=rectVerts(tl,{x:tl.x+Math.max(1,+nw||w),y:tl.y+d}); render(); save(); },
+        nd=>{ pushUndo(); const tl=o.verts[0]; o.verts=rectVerts(tl,{x:tl.x+w,y:tl.y+Math.max(1,+nd||d)}); render(); save(); }));
+    }
+    const info=document.createElement('div'); info.className='hint';
+    info.textContent='面積：'+fmt2(m2(areaMm2(o.verts)))+' m²（座標法）';
+    body.appendChild(info);
+  } else if('a' in o && !('type' in o)){ // 有効寸法
+    const info=document.createElement('div'); info.className='hint';
+    info.textContent='有効寸法：'+Math.round(dist(o.a,o.b))+' mm'; body.appendChild(info);
+  } else { // シンボル
+    const def=SYMBOL_DEFS[o.type];
+    const head=document.createElement('div'); head.className='hint'; head.textContent='種別：'+def.label; body.appendChild(head);
+    def.attrs.forEach(at=>{
+      if(at.auto && def.line){ const v=fmt2(dist(o.a,o.b)/1000);
+        const info=document.createElement('div'); info.className='fld';
+        info.innerHTML=`<label>${at.label}</label><input type="text" value="${v}（自動）" disabled>`; body.appendChild(info); return; }
+      body.appendChild(field(at.label, o.qty_attr[at.k]??'', at.text?'text':'number',
+        v=>{ pushUndo(); o.qty_attr[at.k]= at.text? v : (v===''?'':+v); render(); save(); }));
+    });
+    body.appendChild(field('メモ', o.note||'','text',v=>{ pushUndo(); o.note=v; save(); }));
+    if(!def.line){
+      const btn=document.createElement('button'); btn.className='tool-btn'; btn.style.marginTop='4px';
+      btn.textContent='90°回転 (R)'; btn.onclick=()=>rotateSel(); body.appendChild(btn);
+    }
+  }
+}
+function rotateSel(){ const hit=ui.selId&&findEl(ui.selId); if(!hit||!('type' in hit.o)||SYMBOL_DEFS[hit.o.type].line)return;
+  pushUndo(); hit.o.rot=((hit.o.rot||0)+90)%360; render(); save(); }
+function field(label,val,type,onCommit){
+  const wrap=document.createElement('div'); wrap.className='fld';
+  const l=document.createElement('label'); l.textContent=label; wrap.appendChild(l);
+  const i=document.createElement('input'); i.type=type; i.value=val;
+  i.onchange=()=>onCommit(i.value); wrap.appendChild(i); return wrap;
+}
+function field2(l1,v1,l2,v2,c1,c2){
+  const wrap=document.createElement('div'); wrap.className='fld';
+  const r=document.createElement('div'); r.className='fld2';
+  const mk=(lab,val,cb)=>{ const d=document.createElement('div');
+    const l=document.createElement('label'); l.textContent=lab; d.appendChild(l);
+    const i=document.createElement('input'); i.type='number'; i.value=val; i.onchange=()=>cb(i.value); d.appendChild(i); return d; };
+  r.appendChild(mk(l1,v1,c1)); r.appendChild(mk(l2,v2,c2)); wrap.appendChild(r); return wrap;
+}
+
+/* =========================================================================
+   10. ツールバー / パレット 配線
+   ========================================================================= */
+function setTool(t){ ui.tool=t; ui.pendingSymbol=null; ui.draft=null; ui.lineDraft=null; ui.effDraft=null;
+  document.querySelectorAll('#palette [data-tool]').forEach(b=>b.classList.toggle('active',b.dataset.tool===t));
+  document.querySelectorAll('#symbol-pal .tool-btn').forEach(b=>b.classList.remove('active'));
+  panes.forEach(p=>p.svg.style.cursor = t==='select'?'default':'crosshair');
+  render(); }
+function setSymbol(key){ ui.pendingSymbol=key; ui.tool='select'; ui.draft=null; ui.effDraft=null;
+  if(!key)ui.lineDraft=null;
+  document.querySelectorAll('#palette [data-tool]').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('#symbol-pal .tool-btn').forEach(b=>b.classList.toggle('active',b.dataset.sym===key));
+  render(); }
+
+document.querySelectorAll('#palette [data-tool]').forEach(b=>{ b.onclick=()=>setTool(b.dataset.tool); });
+
+// シンボルパレット生成
+const symPal=document.getElementById('symbol-pal');
+Object.keys(SYMBOL_DEFS).forEach(k=>{ const b=document.createElement('button');
+  b.className='tool-btn'; b.dataset.sym=k; b.textContent=SYMBOL_DEFS[k].label;
+  b.onclick=()=>setSymbol(ui.pendingSymbol===k?null:k); symPal.appendChild(b); });
+
+// グリッド
+const gridSel=document.getElementById('grid-mod'), gcw=document.getElementById('grid-custom-wrap'), gc=document.getElementById('grid-custom');
+gridSel.onchange=()=>{ if(gridSel.value==='custom'){ gcw.style.display='block'; settings.gridMod=Math.max(1,+gc.value||910); }
+  else { gcw.style.display='none'; settings.gridMod=+gridSel.value; } render(); save(); };
+gc.onchange=()=>{ settings.gridMod=Math.max(1,+gc.value||910); render(); save(); };
+document.getElementById('grid-div').onchange=e=>{ settings.gridDiv=Math.max(1,+e.target.value||1); render(); save(); };
+
+// トグル
+document.getElementById('show-grid').onchange=e=>{ settings.showGrid=e.target.checked; render(); save(); };
+document.getElementById('show-dim').onchange=e=>{ settings.showDim=e.target.checked; render(); save(); };
+document.getElementById('show-table').onchange=e=>{ settings.showTable=e.target.checked; render(); save(); };
+
+// ズーム
+document.getElementById('zoom-in').onclick=()=>{ const s=panes[ui.activeFloor].svg; zoomAt(s.clientWidth/2,s.clientHeight/2,1.2); };
+document.getElementById('zoom-out').onclick=()=>{ const s=panes[ui.activeFloor].svg; zoomAt(s.clientWidth/2,s.clientHeight/2,1/1.2); };
+document.getElementById('zoom-fit').onclick=fitView;
+
+// 戻る/進む
+document.getElementById('undo-btn').onclick=undo;
+document.getElementById('redo-btn').onclick=redo;
+
+// 印刷 / 書き出し / 全消去
+document.getElementById('print-btn').onclick=openPrint;
+document.getElementById('export-btn').onclick=exportSVG;
+document.getElementById('clear-btn').onclick=()=>{ if(confirm('1階・2階すべて消去します。よろしいですか？')){
+  pushUndo(); project.floors=[newFloor('f1','1階'),newFloor('f2','2階')]; ui.selId=null; render(); save(); } };
+
+/* ===== キーボード ===== */
+document.addEventListener('keydown',e=>{
+  const typing=/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName);
+  const meta=e.metaKey||e.ctrlKey;
+  if(meta && e.key.toLowerCase()==='z'){ e.preventDefault(); e.shiftKey?redo():undo(); return; }
+  if(meta && e.key.toLowerCase()==='y'){ e.preventDefault(); redo(); return; }
+  if(typing) return;
+  if(ui.draft){
+    if(e.key==='Enter'){ finalizePoly(); e.preventDefault(); return; }
+    if(e.key==='Escape'){ ui.draft=null; render(); e.preventDefault(); return; }
+    if(e.key==='Backspace'){ ui.draft.verts.pop(); if(!ui.draft.verts.length)ui.draft=null; render(); e.preventDefault(); return; }
+  }
+  if(e.key==='Escape'){ ui.selId=null; ui.lineDraft=null; ui.effDraft=null; setSymbol(null); render(); return; }
+  if((e.key==='Delete'||e.key==='Backspace') && ui.selId){ deleteSelected(); e.preventDefault(); return; }
+  if(e.key==='r'||e.key==='R'){ rotateSel(); }
+  if(e.key==='v'||e.key==='V'){ setTool('select'); }
+});
+
+/* =========================================================================
+   11. SVG 書き出し（2面＋寸法＋シンボル＋任意で求積表）
+   ========================================================================= */
+function exportSVG(){
+  const selBak=ui.selId, toolBak=ui.tool;
+  // 方眼の同梱は画面の「方眼」トグルに従う（チェックを外せばグリッド無しで書き出し）
+  ui.selId=null; ui.tool='select';
+  render();
+  const W=panes[0].svg.clientWidth, H=panes[0].svg.clientHeight, gap=28, top=30;
+  const inc=settings.showTable;
+  const tH=inc?tableHeight():0;
+  const totalW=W*2+gap, totalH=H+top+tH;
+  let s=`<svg xmlns="${SVGNS}" width="${totalW}" height="${totalH}" viewBox="0 0 ${totalW} ${totalH}" font-family="sans-serif">`;
+  s+=`<rect width="${totalW}" height="${totalH}" fill="#ffffff"/>`;
+  s+=`<text x="6" y="20" font-size="13" font-weight="600" fill="${COL.ink}">1階</text>`;
+  s+=`<svg x="0" y="${top}" width="${W}" height="${H}">${panes[0].svg.innerHTML}</svg>`;
+  s+=`<text x="${W+gap+6}" y="20" font-size="13" font-weight="600" fill="${COL.ink}">2階</text>`;
+  s+=`<svg x="${W+gap}" y="${top}" width="${W}" height="${H}">${panes[1].svg.innerHTML}</svg>`;
+  s+=`<rect x="0" y="${top}" width="${totalW}" height="${H}" fill="none" stroke="#eeeeee"/>`;
+  if(inc) s+=tableSVG(top+H+8, totalW);
+  s+=`<text x="${totalW-6}" y="${totalH-8}" font-size="10" text-anchor="end" fill="${COL.muted}">総合建設業／株式会社 大建</text>`;
+  s+=`</svg>`;
+  const blob=new Blob([s],{type:'image/svg+xml'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download=(project.meta.title||'現況図兼求積図')+'.svg'; a.click();
+  ui.selId=selBak; ui.tool=toolBak; render();
+}
+function tableHeight(){ let rows=2; project.floors.forEach(f=>{ rows+=1+Math.max(1,f.shapes.length)+1; }); return rows*16+24; }
+function tableSVG(y0,totalW){
+  let s=`<g font-size="11" fill="${COL.ink}">`; let y=y0+14;
+  s+=`<text x="6" y="${y}" font-size="12" font-weight="600">求積表</text>`; y+=18;
+  let total=0;
+  project.floors.forEach(f=>{ let sum=0;
+    s+=`<text x="6" y="${y}" font-weight="600">${esc(f.name)}</text>`; y+=15;
+    (f.shapes.length?f.shapes:[null]).forEach(sh=>{ if(sh){ const a=m2(areaMm2(sh.verts)); sum+=a;
+        s+=`<text x="18" y="${y}">${esc(sh.name||'区画')}</text><text x="240" y="${y}" text-anchor="end">${fmt2(a)} m²</text>`; }
+      else { s+=`<text x="18" y="${y}" fill="${COL.muted}">（区画なし）</text>`; } y+=15; });
+    s+=`<line x1="18" y1="${y-11}" x2="240" y2="${y-11}" stroke="${COL.accent}"/>`;
+    s+=`<text x="18" y="${y}" font-weight="700">${esc(f.name)} 計</text><text x="240" y="${y}" text-anchor="end" font-weight="700">${fmt2(sum)} m²</text>`; y+=20;
+    total+=sum; });
+  s+=`<text x="6" y="${y}" font-weight="700">建物合計（1F＋2F）：${fmt2(total)} m²</text>`;
+  s+=`</g>`; return s;
+}
+
+/* =========================================================================
+   11.5 印刷（A3横/A4横・実図準拠の1枚を自動生成）
+   ========================================================================= */
+let printPaper='a3', printScale=100;
+const CIRC='①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳';
+function circ(n){ return (n>=1&&n<=20)?CIRC[n-1]:('('+n+')'); }
+function comma(n){ return Math.round(n).toLocaleString('en-US'); }
+
+function ensurePrintDOM(){
+  if(document.getElementById('printview')) return;
+  const st=document.createElement('style'); st.id='print-style'; st.textContent=PRINT_CSS; document.head.appendChild(st);
+  const ps=document.createElement('style'); ps.id='print-page'; document.head.appendChild(ps);
+  const v=document.createElement('div'); v.id='printview'; v.className='hidden';
+  v.innerHTML=`
+    <div id="printbar">
+      <b>印刷プレビュー</b>
+      <label>工事名 <input id="p-title" type="text" placeholder="○○様邸 解体工事" style="width:170px"></label>
+      <label>縮尺 1/ <input id="p-scale" type="number" value="100" style="width:64px"></label>
+      <label>用紙 <select id="p-paper"><option value="a3">A3 横</option><option value="a4">A4 横</option></select></label>
+      <span style="flex:1"></span>
+      <button id="p-print" class="go">印刷</button>
+      <button id="p-close">閉じる</button>
+    </div>
+    <div id="psheet-wrap"><div id="psheet" class="psheet"></div></div>`;
+  document.body.appendChild(v);
+  document.getElementById('p-close').onclick=()=>v.classList.add('hidden');
+  document.getElementById('p-print').onclick=()=>window.print();
+  document.getElementById('p-paper').onchange=e=>{ printPaper=e.target.value; document.body.classList.toggle('p-a4',printPaper==='a4'); setPrintPage(); fitPrint(); };
+  const ti=document.getElementById('p-title'); ti.value=project.meta.title||''; ti.oninput=()=>{ project.meta.title=ti.value; save(); refreshPrint(); };
+  const sc=document.getElementById('p-scale'); sc.value=printScale; sc.oninput=()=>{ printScale=Math.max(1,+sc.value||100); refreshPrint(); };
+  setPrintPage();
+}
+function setPrintPage(){ const a4=printPaper==='a4';
+  document.getElementById('print-page').textContent='@page{ size:'+(a4?'297mm 210mm':'420mm 297mm')+'; margin:0; }'; }
+function refreshPrint(){ const sheet=document.getElementById('psheet'); if(sheet){ sheet.innerHTML=buildPrint(); fitPrint(); } }
+function openPrint(){ ensurePrintDOM(); document.getElementById('printview').classList.remove('hidden');
+  document.body.classList.toggle('p-a4',printPaper==='a4'); refreshPrint(); }
+function fitPrint(){
+  const wrap=document.getElementById('psheet-wrap'), sheet=document.getElementById('psheet'); if(!wrap||!sheet)return;
+  const probe=document.createElement('div'); probe.style.cssText='width:100mm;position:absolute;visibility:hidden'; document.body.appendChild(probe);
+  const pxmm=probe.getBoundingClientRect().width/100; probe.remove();
+  const wmm=printPaper==='a4'?297:420, hmm=printPaper==='a4'?210:297;
+  const scale=Math.min((wrap.clientWidth-24)/(wmm*pxmm), (wrap.clientHeight-24)/(hmm*pxmm), 1);
+  sheet.style.transform='scale('+Math.max(0.05,scale)+')';
+}
+window.addEventListener('resize',()=>{ const v=document.getElementById('printview'); if(v && !v.classList.contains('hidden')) fitPrint(); });
+
+/* 各階の図（外形＋番号＋寸法）を bbox にフィットさせた SVG 文字列 */
+function buildFloorSVG(floor, numbers){
+  let minx=Infinity,miny=Infinity,maxx=-Infinity,maxy=-Infinity,any=false;
+  const eat=(x,y)=>{any=true;minx=Math.min(minx,x);miny=Math.min(miny,y);maxx=Math.max(maxx,x);maxy=Math.max(maxy,y);};
+  floor.shapes.forEach(s=>s.verts.forEach(v=>eat(v.x,v.y)));
+  floor.texts.forEach(t=>eat(t.x,t.y));
+  if(!any) return '<svg viewBox="0 0 10 10"></svg>';
+  const bw=maxx-minx,bh=maxy-miny,span=Math.max(bw,bh,1000);
+  const pad=span*0.20, off=span*0.06, fz=span*0.028, nz=span*0.055, lw=span*0.0016;
+  let s=`<svg viewBox="${minx-pad} ${miny-pad} ${bw+pad*2} ${bh+pad*2}" preserveAspectRatio="xMidYMid meet" font-family="sans-serif">`;
+  floor.shapes.forEach(sh=>{
+    const pts=sh.verts.map(v=>`${v.x},${v.y}`).join(' ');
+    if(sh.kind==='site'){ s+=`<polygon points="${pts}" fill="none" stroke="#1a1a1a" stroke-width="${lw}"/>`; return; }
+    s+=`<polygon points="${pts}" fill="#fff" stroke="#1a1a1a" stroke-width="${lw*1.3}"/>`;
+    const cx=sh.verts.reduce((a,v)=>a+v.x,0)/sh.verts.length, cy=sh.verts.reduce((a,v)=>a+v.y,0)/sh.verts.length;
+    const num=numbers.get(sh.id);
+    if(num) s+=`<text x="${cx}" y="${cy}" font-size="${nz}" text-anchor="middle" dominant-baseline="central" fill="#1a1a1a">${circ(num)}</text>`;
+    if(sh.kind==='rect'){
+      const xs=sh.verts.map(v=>v.x), ys=sh.verts.map(v=>v.y);
+      s+=dimH(Math.min(...xs),Math.max(...xs),Math.min(...ys),off,lw,fz);
+      s+=dimV(Math.min(...ys),Math.max(...ys),Math.min(...xs),off,lw,fz);
+    } else {
+      (sh.edgeDims||[]).forEach(i=>{ s+=dimEdge(sh.verts[i],sh.verts[(i+1)%sh.verts.length],{x:cx,y:cy},off,lw,fz); });
+    }
+  });
+  floor.texts.forEach(t=>{ s+=`<text x="${t.x}" y="${t.y}" font-size="${fz*1.15}" fill="#1a1a1a">${esc(t.str||'')}</text>`; });
+  return s+'</svg>';
+}
+function dimH(x1,x2,y,off,lw,fz){ const dy=y-off;
+  return `<line x1="${x1}" y1="${y}" x2="${x1}" y2="${dy}" stroke="#1a1a1a" stroke-width="${lw}"/>`
+    +`<line x1="${x2}" y1="${y}" x2="${x2}" y2="${dy}" stroke="#1a1a1a" stroke-width="${lw}"/>`
+    +`<line x1="${x1}" y1="${dy}" x2="${x2}" y2="${dy}" stroke="#1a1a1a" stroke-width="${lw}"/>`
+    +`<text x="${(x1+x2)/2}" y="${dy-fz*0.5}" font-size="${fz}" text-anchor="middle" fill="#1a1a1a">${comma(x2-x1)}</text>`; }
+function dimV(y1,y2,x,off,lw,fz){ const dx=x-off, my=(y1+y2)/2;
+  return `<line x1="${x}" y1="${y1}" x2="${dx}" y2="${y1}" stroke="#1a1a1a" stroke-width="${lw}"/>`
+    +`<line x1="${x}" y1="${y2}" x2="${dx}" y2="${y2}" stroke="#1a1a1a" stroke-width="${lw}"/>`
+    +`<line x1="${dx}" y1="${y1}" x2="${dx}" y2="${y2}" stroke="#1a1a1a" stroke-width="${lw}"/>`
+    +`<text x="${dx-fz*0.5}" y="${my}" font-size="${fz}" text-anchor="middle" dominant-baseline="central" transform="rotate(-90 ${dx-fz*0.5} ${my})" fill="#1a1a1a">${comma(y2-y1)}</text>`; }
+function dimEdge(a,b,c,off,lw,fz){
+  let nx=(b.y-a.y), ny=-(b.x-a.x); const nl=Math.hypot(nx,ny)||1; nx/=nl; ny/=nl;
+  const mx=(a.x+b.x)/2,my=(a.y+b.y)/2; if((mx-c.x)*nx+(my-c.y)*ny<0){ nx=-nx; ny=-ny; }
+  const ax=a.x+nx*off,ay=a.y+ny*off,bx=b.x+nx*off,by=b.y+ny*off;
+  const len=Math.round(Math.hypot(b.x-a.x,b.y-a.y));
+  let ang=Math.atan2(by-ay,bx-ax)*180/Math.PI; if(ang>90||ang<-90)ang+=180;
+  const tx=(ax+bx)/2,ty=(ay+by)/2;
+  return `<line x1="${a.x}" y1="${a.y}" x2="${ax}" y2="${ay}" stroke="#1a1a1a" stroke-width="${lw}"/>`
+    +`<line x1="${b.x}" y1="${b.y}" x2="${bx}" y2="${by}" stroke="#1a1a1a" stroke-width="${lw}"/>`
+    +`<line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}" stroke="#1a1a1a" stroke-width="${lw}"/>`
+    +`<text x="${tx}" y="${ty-fz*0.4}" font-size="${fz}" text-anchor="middle" transform="rotate(${ang} ${tx} ${ty})" fill="#1a1a1a">${comma(len)}</text>`;
+}
+
+function buildPrint(){
+  const numbers=new Map(); let n=0;
+  const groups=project.floors.map((f,fi)=>{
+    const shapes=f.shapes.filter(s=>s.kind!=='site');
+    const items=shapes.map(s=>{ n++; numbers.set(s.id,n);
+      let expr, area;
+      if(s.kind==='rect'){ const xs=s.verts.map(v=>v.x),ys=s.verts.map(v=>v.y);
+        const w=+((Math.max(...xs)-Math.min(...xs))/1000).toFixed(2);
+        const d=+((Math.max(...ys)-Math.min(...ys))/1000).toFixed(2);
+        area=+(w*d).toFixed(2); expr=`${w.toFixed(2)} × ${d.toFixed(2)} ＝ ${area.toFixed(2)}`;
+      } else { area=+m2(areaMm2(s.verts)).toFixed(2); expr=`座標法 ＝ ${area.toFixed(2)}`; }
+      return {num:n, name:s.name||'区画', expr, area};
+    });
+    const sum=+items.reduce((a,it)=>a+it.area,0).toFixed(2);
+    return {fi, name:f.name, items, sum};
+  }).filter(g=>g.items.length);
+
+  let rows='';
+  groups.forEach(g=>{
+    g.items.forEach(it=>{ rows+=`<tr><td class="no">${circ(it.num)}</td><td>${esc(it.name)}</td><td class="eq">${it.expr}</td></tr>`; });
+    const label=g.fi===0?'建築面積':`${esc(g.name)}床面積`;
+    const range=g.items.length>1?`${circ(g.items[0].num)}〜${circ(g.items[g.items.length-1].num)}`:circ(g.items[0].num);
+    rows+=`<tr class="sumr"><td></td><td>${label}　${range}</td><td class="eq">＝ ${g.sum.toFixed(2)} ㎡</td></tr>`;
+  });
+  if(!rows) rows=`<tr><td colspan="3" style="color:#999">区画がありません（矩形・多角形を描いてください）</td></tr>`;
+
+  let panels='';
+  project.floors.forEach(f=>{ panels+=`<section class="p-panel"><h3>${esc(f.name)}平面図</h3><div class="p-cv">${buildFloorSVG(f,numbers)}</div></section>`; });
+
+  const title=`${esc(project.meta.title||'○○様邸 解体工事')}　現況測量図（求積図）　S ＝ 1 / ${printScale}`;
+  return `<div class="p-frame"><div class="p-draw">${panels}</div>`
+    +`<div class="p-footer"><div class="p-clrow"><div class="p-calc"><table class="p-cl">${rows}</table></div></div>`
+    +`<div class="p-title">${title}</div></div></div>`;
+}
+
+const PRINT_CSS=`
+  #printview{ position:fixed; inset:0; z-index:1000; background:#e9ebec; display:flex; flex-direction:column; }
+  #printview.hidden{ display:none; }
+  #printbar{ flex:none; height:46px; display:flex; align-items:center; gap:12px; padding:0 14px; background:#fff; border-bottom:1px solid #d4d8d8; font-size:12.5px; }
+  #printbar label{ display:flex; align-items:center; gap:4px; color:#555; }
+  #printbar input,#printbar select{ font-size:12.5px; padding:4px 6px; border:1px solid #cfd4d4; border-radius:5px; }
+  #printbar button{ font-size:12.5px; padding:7px 12px; border:1px solid #cfd4d4; border-radius:6px; background:#fff; cursor:pointer; }
+  #printbar button.go{ border-color:#0ABAB5; }
+  #psheet-wrap{ flex:1; overflow:auto; display:flex; align-items:flex-start; justify-content:center; padding:12px; }
+  .psheet{ background:#fff; box-shadow:0 4px 24px rgba(0,0,0,.18); width:420mm; height:297mm; transform-origin:top center; position:relative; flex:none; }
+  body.p-a4 .psheet{ width:297mm; height:210mm; }
+  .p-frame{ position:absolute; inset:6mm; border:1.4px solid #1a1a1a; padding:5mm; display:flex; flex-direction:column; font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif; color:#1a1a1a; }
+  .p-draw{ flex:1; display:flex; gap:6mm; min-height:0; }
+  .p-panel{ flex:1; min-width:0; border:0.8px solid #9aa0a0; display:flex; flex-direction:column; }
+  .p-panel>h3{ margin:0; font-size:3.6mm; font-weight:700; padding:2mm 3mm; border-bottom:0.8px solid #9aa0a0; }
+  .p-cv{ flex:1; position:relative; }
+  .p-cv svg{ position:absolute; inset:0; width:100%; height:100%; }
+  .p-footer{ flex:none; margin-top:5mm; display:flex; flex-direction:column; gap:3mm; }
+  .p-clrow{ display:flex; justify-content:flex-end; }
+  .p-calc{ border:0.6px solid #1a1a1a; padding:2.5mm 4mm; }
+  table.p-cl{ border-collapse:collapse; font-size:3.3mm; }
+  table.p-cl td{ padding:1.1mm 2.6mm; white-space:nowrap; }
+  table.p-cl td.no{ text-align:center; width:7mm; }
+  table.p-cl td.eq{ text-align:right; font-variant-numeric:tabular-nums; }
+  table.p-cl tr.sumr td{ font-weight:700; border-top:0.6px solid #0ABAB5; }
+  .p-title{ text-align:center; font-size:4.6mm; font-weight:700; letter-spacing:.06em; }
+  @media print{
+    body>#palette, body>#stage{ display:none !important; }
+    #printview{ position:static !important; background:#fff !important; display:block !important; }
+    #printview.hidden{ display:block !important; }
+    #printbar{ display:none !important; }
+    #psheet-wrap{ overflow:visible !important; padding:0 !important; display:block !important; }
+    .psheet{ transform:none !important; box-shadow:none !important; height:296mm !important; }
+    body.p-a4 .psheet{ height:209mm !important; }
+  }
+`;
+
+/* =========================================================================
+   12. ブラウザの「戻る」を無効化（誤操作で作業を失わない）
+   ========================================================================= */
+history.pushState(null,document.title,location.href);
+window.addEventListener('popstate',()=>{ history.pushState(null,document.title,location.href); });
+window.addEventListener('beforeunload',e=>{ e.preventDefault(); e.returnValue=''; });
+
+/* =========================================================================
+   13. 起動
+   ========================================================================= */
+window.addEventListener('resize',render);
+load();
+// 設定をUIへ反映
+(function syncUI(){
+  const gm=document.getElementById('grid-mod');
+  if([...gm.options].some(o=>o.value==String(settings.gridMod))) gm.value=String(settings.gridMod);
+  else { gm.value='custom'; gcw.style.display='block'; gc.value=settings.gridMod; }
+  document.getElementById('grid-div').value=String(settings.gridDiv);
+  document.getElementById('show-grid').checked=settings.showGrid;
+  document.getElementById('show-dim').checked=settings.showDim;
+  document.getElementById('show-table').checked=settings.showTable;
+})();
+/* ===== iPad: 2本指でズーム＆パン（1本指は描画/移動のまま） ===== */
+panes.forEach(pane=>{
+  const svg=pane.svg; const pts=new Map(); let pz=null;
+  const loc=e=>{ const r=svg.getBoundingClientRect(); return {x:e.clientX-r.left, y:e.clientY-r.top}; };
+  svg.addEventListener('pointerdown',e=>{
+    if(e.pointerType!=='touch') return;
+    pts.set(e.pointerId, loc(e));
+    if(pts.size===2){ ui.pinching=true; e.stopPropagation();
+      const a=[...pts.values()], mid={x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2};
+      pz={ d0:Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y)||1, s0:view.scale,
+           wx:(mid.x-view.tx)/view.scale, wy:(mid.y-view.ty)/view.scale }; }
+  },true);
+  svg.addEventListener('pointermove',e=>{
+    if(e.pointerType!=='touch' || !pts.has(e.pointerId)) return;
+    pts.set(e.pointerId, loc(e));
+    if(ui.pinching && pts.size>=2 && pz){ e.stopPropagation(); e.preventDefault();
+      const a=[...pts.values()], d=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y)||1,
+            mid={x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2};
+      view.scale=Math.max(0.0005, pz.s0*(d/pz.d0));
+      view.tx=mid.x - pz.wx*view.scale; view.ty=mid.y - pz.wy*view.scale; render(); }
+  },true);
+  const end=e=>{ if(pts.has(e.pointerId)) pts.delete(e.pointerId);
+    if(pts.size<2){ pz=null; if(pts.size===0){ ui.pinching=false; save(); } } };
+  svg.addEventListener('pointerup',end,true);
+  svg.addEventListener('pointercancel',end,true);
+});
+
+/* ===== Service Worker（オフライン動作） ===== */
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>{ navigator.serviceWorker.register('sw.js').catch(()=>{}); });
+}
+
+setTool('select');
+render();
+</script>
+</body>
+</html>
