@@ -369,11 +369,28 @@ function mergeSegs(segs){
   }
   return res;
 }
-// 区画1つの面積(m²)。矩形=間口×奥行(丸め)／多角形=シューレース。画面と印刷で同一基準にするための正典
+// 直角(軸並行)の多角形を四角に自動分割（横帯スラブ法）。斜め辺があれば null。求積を間口×奥行で出すために使う
+function decomposeRectilinear(verts){
+  if(!Array.isArray(verts)||verts.length<4) return null;
+  for(let i=0;i<verts.length;i++){ const a=verts[i],b=verts[(i+1)%verts.length];
+    if(a.x!==b.x && a.y!==b.y) return null; }          // 斜め辺＝直角形でない
+  const xs=uniqSorted(verts.map(v=>v.x)), ys=uniqSorted(verts.map(v=>v.y));
+  if(xs.length<2||ys.length<2) return null;
+  const rects=[];
+  for(let j=0;j<ys.length-1;j++){ const cy=(ys[j]+ys[j+1])/2; let run=null;
+    for(let i=0;i<xs.length-1;i++){ const cx=(xs[i]+xs[i+1])/2, inside=pointInPoly({x:cx,y:cy},verts);
+      if(inside && run===null) run=xs[i];
+      else if(!inside && run!==null){ rects.push({x1:run,y1:ys[j],x2:xs[i],y2:ys[j+1]}); run=null; } }
+    if(run!==null) rects.push({x1:run,y1:ys[j],x2:xs[xs.length-1],y2:ys[j+1]}); }
+  return rects.length?rects:null;
+}
+function rectM2(r){ return round2(round2((r.x2-r.x1)/1000)*round2((r.y2-r.y1)/1000)); }   // 1枚の四角=間口×奥行(丸め)
+// 区画1つの面積(m²)。矩形/直角多角形=間口×奥行(四角分割)の合計／斜め多角形=シューレース。画面と印刷で同一基準にする正典
 function shapeAreaM2(s){
   if(s.kind==='rect'){ const xs=s.verts.map(v=>v.x),ys=s.verts.map(v=>v.y);
-    const w=round2((Math.max(...xs)-Math.min(...xs))/1000), d=round2((Math.max(...ys)-Math.min(...ys))/1000);
-    return round2(w*d); }
+    return rectM2({x1:Math.min(...xs),x2:Math.max(...xs),y1:Math.min(...ys),y2:Math.max(...ys)}); }
+  const rd=decomposeRectilinear(s.verts);
+  if(rd) return round2(rd.reduce((a,r)=>a+rectM2(r),0));
   return round2(m2(areaMm2(s.verts)));
 }
 // 階の求積合計(m²)：各区画(丸め済み)の合算（内訳の積み上げ＝計が必ず一致）。敷地線は含めない
@@ -681,15 +698,17 @@ function drawGrid(svg,W,H){
   }
 }
 
-// 躯体レイヤー：その階の矩形を融合し、外周＝実線／内側の仕切り＝点線（求積線）で描く
-function drawKutai(svg,floor){
-  const rb=floor.shapes.filter(s=>s.kind==='rect').map(rectBounds);
-  if(rb.length<1) return;
-  const u=unionRects(rb);
+// 躯体レイヤー：外周＝実線／内側の分割（求積線）＝点線。矩形は融合、直角形の多角形は自動四角分割を同じ作法で
+function drawKutaiUnion(svg,u){
   mergeSegs(u.partitions).forEach(g=>
     svg.appendChild(line(sx(g.x1),sy(g.y1),sx(g.x2),sy(g.y2),COL.muted,1,{'stroke-dasharray':'5 4'})));
   mergeSegs(u.outline).forEach(g=>
     svg.appendChild(line(sx(g.x1),sy(g.y1),sx(g.x2),sy(g.y2),COL.ink,2,{'stroke-linecap':'square'})));
+}
+function drawKutai(svg,floor){
+  const rb=floor.shapes.filter(s=>s.kind==='rect').map(rectBounds);
+  if(rb.length) drawKutaiUnion(svg, unionRects(rb));
+  floor.shapes.forEach(s=>{ if(s.kind==='poly'){ const rd=decomposeRectilinear(s.verts); if(rd) drawKutaiUnion(svg, unionRects(rd)); } });
 }
 
 function drawShape(svg,pane,s){
@@ -710,8 +729,9 @@ function drawShape(svg,pane,s){
     return;
   }
   const pts = s.verts.map(v=>`${sx(v.x)},${sy(v.y)}`).join(' ');
-  // 矩形は輪郭を躯体レイヤーに委譲（塗りのみ）。選択中だけ枠を見せる。多角形(三斜)は自前の輪郭を残す。
-  const baseStroke = s.kind==='rect' ? 'none' : COL.ink;
+  // 矩形・直角形は輪郭を躯体レイヤーに委譲（塗りのみ）。選択中だけ枠を見せる。斜め多角形(三斜)は自前の輪郭を残す。
+  const delegated = s.kind==='rect' || (s.kind==='poly' && decomposeRectilinear(s.verts));
+  const baseStroke = delegated ? 'none' : COL.ink;
   const poly = el('polygon',{ points:pts, fill:COL.fill, stroke:sel?COL.sel:baseStroke, 'stroke-width':sel?2.4:1.5,
     'stroke-linejoin':'round' });
   poly.style.cursor='move';
@@ -1376,20 +1396,32 @@ function buildFloorSVG(floor, numbers){
     mergeSegs(u.partitions).forEach(g=>{ s+=`<line x1="${g.x1}" y1="${g.y1}" x2="${g.x2}" y2="${g.y2}" stroke="#1a1a1a" stroke-width="${lw*0.7}" stroke-dasharray="${dash}"/>`; });
     mergeSegs(u.outline).forEach(g=>{ s+=`<line x1="${g.x1}" y1="${g.y1}" x2="${g.x2}" y2="${g.y2}" stroke="#1a1a1a" stroke-width="${lw*1.4}" stroke-linecap="square"/>`; });
   }
-  // 多角形(三斜など)は自前の輪郭
+  // 多角形：直角形は四角に自動分割→白塗り＋分割線(点線=補助線)＋外周(実線=躯体)。斜め(三斜)は自前の輪郭
+  const dash=`${comma(Math.round(span*0.014))} ${comma(Math.round(span*0.010))}`;
   floor.shapes.filter(sh=>sh.kind!=='site'&&sh.kind!=='rect').forEach(sh=>{
     const pts=sh.verts.map(v=>`${v.x},${v.y}`).join(' ');
-    s+=`<polygon points="${pts}" fill="#fff" stroke="#1a1a1a" stroke-width="${lw*1.3}"/>`;
+    const rd=decomposeRectilinear(sh.verts);
+    if(rd){
+      s+=`<polygon points="${pts}" fill="#fff" stroke="none"/>`;
+      const u=unionRects(rd);
+      mergeSegs(u.partitions).forEach(g=>{ s+=`<line x1="${g.x1}" y1="${g.y1}" x2="${g.x2}" y2="${g.y2}" stroke="#1a1a1a" stroke-width="${lw*0.7}" stroke-dasharray="${dash}"/>`; });
+      mergeSegs(u.outline).forEach(g=>{ s+=`<line x1="${g.x1}" y1="${g.y1}" x2="${g.x2}" y2="${g.y2}" stroke="#1a1a1a" stroke-width="${lw*1.4}" stroke-linecap="square"/>`; });
+    } else {
+      s+=`<polygon points="${pts}" fill="#fff" stroke="#1a1a1a" stroke-width="${lw*1.3}"/>`;
+    }
   });
-  // 区画番号＋寸法（矩形=間口×奥行／多角形=全辺）
+  // 区画番号＋寸法（矩形・直角形=外周辺の寸法／斜め多角形=全辺）
   floor.shapes.filter(sh=>sh.kind!=='site').forEach(sh=>{
     const cx=sh.verts.reduce((a,v)=>a+v.x,0)/sh.verts.length, cy=sh.verts.reduce((a,v)=>a+v.y,0)/sh.verts.length;
     const num=numbers.get(sh.id);
     if(num) s+=`<text x="${cx}" y="${cy}" font-size="${nz}" text-anchor="middle" dominant-baseline="central" fill="#1a1a1a">${circ(num)}</text>`;
+    let rd;
     if(sh.kind==='rect'){
       const xs=sh.verts.map(v=>v.x), ys=sh.verts.map(v=>v.y);
       s+=dimH(Math.min(...xs),Math.max(...xs),Math.min(...ys),off,lw,fz);
       s+=dimV(Math.min(...ys),Math.max(...ys),Math.min(...xs),off,lw,fz);
+    } else if((rd=decomposeRectilinear(sh.verts))){
+      mergeSegs(unionRects(rd).outline).forEach(g=>{ s+=dimEdge({x:g.x1,y:g.y1},{x:g.x2,y:g.y2},{x:cx,y:cy},off,lw,fz); });
     } else {
       for(let i=0;i<sh.verts.length;i++){ s+=dimEdge(sh.verts[i],sh.verts[(i+1)%sh.verts.length],{x:cx,y:cy},off,lw,fz); }
     }
@@ -1473,12 +1505,15 @@ function buildPrint(){
   const groups=project.floors.map((f,fi)=>{
     const shapes=f.shapes.filter(s=>s.kind!=='site');
     const items=shapes.map(s=>{ n++; numbers.set(s.id,n);
-      let expr, area;
+      let expr, area, rd;
+      const term=r=>{ const w=round2((r.x2-r.x1)/1000), d=round2((r.y2-r.y1)/1000); return {w,d,a:round2(w*d)}; };
       if(s.kind==='rect'){ const xs=s.verts.map(v=>v.x),ys=s.verts.map(v=>v.y);
-        const w=+((Math.max(...xs)-Math.min(...xs))/1000).toFixed(2);
-        const d=+((Math.max(...ys)-Math.min(...ys))/1000).toFixed(2);
-        area=+(w*d).toFixed(2); expr=`${w.toFixed(2)} × ${d.toFixed(2)} ＝ ${area.toFixed(2)}`;
-      } else { area=+m2(areaMm2(s.verts)).toFixed(2); expr=`＝ ${area.toFixed(2)}`; }
+        const t=term({x1:Math.min(...xs),x2:Math.max(...xs),y1:Math.min(...ys),y2:Math.max(...ys)});
+        area=t.a; expr=`${t.w.toFixed(2)} × ${t.d.toFixed(2)} ＝ ${area.toFixed(2)}`;
+      } else if((rd=decomposeRectilinear(s.verts))){
+        const ts=rd.map(term); area=round2(ts.reduce((a,t)=>a+t.a,0));   // 直角形＝四角分割の間口×奥行を足す
+        expr=ts.map(t=>`${t.w.toFixed(2)}×${t.d.toFixed(2)}`).join(' ＋ ')+` ＝ ${area.toFixed(2)}`;
+      } else { area=round2(m2(areaMm2(s.verts))); expr=`＝ ${area.toFixed(2)}`; }
       return {num:n, name:s.name||'区画', expr, area};
     });
     const sum=+items.reduce((a,it)=>a+it.area,0).toFixed(2);   // 計＝各内訳行の合算（積み上げと必ず一致）
