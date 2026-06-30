@@ -176,6 +176,8 @@
         <option value="4">1/4</option>
       </select>
     </div>
+    <button class="tool-btn" id="rescale-grid" style="margin-top:6px;">⤢ 別モジュールから変換（一括リスケール）</button>
+    <div class="hint">例：910で描いた図を985に合わせ直す。全区画を一括で拡大／縮小します（面積も変わります）。</div>
   </div>
 
   <h2>敷地・注記（概要でOK）</h2>
@@ -1214,6 +1216,29 @@ gridSel.onchange=()=>{ if(gridSel.value==='custom'){ gcw.style.display='block'; 
   else { gcw.style.display='none'; settings.gridMod=+gridSel.value; } render(); save(); };
 gc.onchange=()=>{ settings.gridMod=Math.max(1,+gc.value||910); render(); save(); };
 document.getElementById('grid-div').onchange=e=>{ settings.gridDiv=Math.max(1,+e.target.value||1); render(); save(); };
+// 別モジュールから一括リスケール（910で描いた図を985等へ）。左上角を固定して全座標を×factor
+function rescaleAll(factor){
+  let minx=Infinity,miny=Infinity;
+  project.floors.forEach(fl=>fl.shapes.forEach(s=>s.verts.forEach(v=>{minx=Math.min(minx,v.x);miny=Math.min(miny,v.y);})));
+  if(!isFinite(minx)){ minx=0; miny=0; }
+  const R=p=>{ if(p&&p.x!=null){ p.x=minx+(p.x-minx)*factor; p.y=miny+(p.y-miny)*factor; } };
+  pushUndo();
+  project.floors.forEach(fl=>{
+    fl.shapes.forEach(s=>s.verts.forEach(R));
+    (fl.symbols||[]).forEach(sy=>{ R(sy); R(sy.a); R(sy.b); });
+    (fl.effdims||[]).forEach(d=>{ R(d.a); R(d.b); });
+    (fl.texts||[]).forEach(R);
+  });
+  render(); save();
+}
+document.getElementById('rescale-grid').onclick=()=>{
+  const old=+prompt('元のモジュール(mm)は？\n全区画を現在のグリッド '+settings.gridMod+'mm に合わせてリスケールします。','910');
+  if(!old||old<=0) return;
+  if(Math.abs(old-settings.gridMod)<0.001){ alert('現在のグリッドと同じモジュールです。'); return; }
+  const f=settings.gridMod/old;
+  if(!confirm('全区画を ×'+f.toFixed(4)+'（'+old+'→'+settings.gridMod+'mm）でリスケールします。\n寸法も面積も変わります。よろしいですか？')) return;
+  rescaleAll(f);
+};
 
 // トグル
 document.getElementById('show-grid').onchange=e=>{ settings.showGrid=e.target.checked; render(); save(); };
@@ -1447,10 +1472,15 @@ function buildFloorSVG(floor, items){
   //   ・斜め多角形（四角に分割できない＝三斜）は従来どおり各辺に
   if(printDim){
     if(drects.length){
-      const gx=uniqSorted(drects.reduce((a,r)=>(a.push(r.x1,r.x2),a),[]));
-      const gy=uniqSorted(drects.reduce((a,r)=>(a.push(r.y1,r.y2),a),[]));
-      s+=dimChainH(gx, drects, Math.min(...gy), off, lw, fz);   // 上＝間口
-      s+=dimChainV(gy, drects, Math.min(...gx), off, lw, fz);   // 左＝奥行
+      const minY=Math.min(...drects.map(r=>r.y1)), minX=Math.min(...drects.map(r=>r.x1));
+      // 寸法を拾う区画を「その辺に接している区画だけ」に限定＝各通りの実寸（区画ぴったり）。
+      //   こうしないと反対側の区画の角まで拾って中途半端な刻み寸法が湧く（＝訳のわからん寸法）
+      const topR=drects.filter(r=>Math.abs(r.y1-minY)<0.5);    // 上辺に接する＝間口の通り
+      const leftR=drects.filter(r=>Math.abs(r.x1-minX)<0.5);   // 左辺に接する＝奥行の通り
+      const gx=uniqSorted(topR.reduce((a,r)=>(a.push(r.x1,r.x2),a),[]));
+      const gy=uniqSorted(leftR.reduce((a,r)=>(a.push(r.y1,r.y2),a),[]));
+      s+=dimChainH(gx, topR, minY, off, lw, fz);   // 上＝間口
+      s+=dimChainV(gy, leftR, minX, off, lw, fz);   // 左＝奥行
     }
     floor.shapes.filter(sh=>sh.kind!=='site'&&sh.kind!=='rect'&&!decomposeRectilinear(sh.verts)).forEach(sh=>{
       const cx=sh.verts.reduce((a,v)=>a+v.x,0)/sh.verts.length, cy=sh.verts.reduce((a,v)=>a+v.y,0)/sh.verts.length;
