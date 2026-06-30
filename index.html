@@ -1402,44 +1402,60 @@ function buildFloorSVG(floor, items){
     const pts=sh.verts.map(v=>`${v.x},${v.y}`).join(' ');
     s+=`<${sh.open?'polyline':'polygon'} points="${pts}" fill="none" stroke="#1a1a1a" stroke-width="${lw}"/>`;
   });
-  // 矩形を融合して1棟に：白塗り＋区画仕切り(点線=求積線)＋外周(太実線=躯体)
+  // 矩形を融合して1棟に：白塗り＋区画仕切り(細い実線=求積線)＋外周(太実線=躯体)。実物の求積図に合わせ細実線
   const rb=floor.shapes.filter(sh=>sh.kind==='rect').map(rectBounds);
   if(rb.length){
     rb.forEach(r=>{ s+=`<rect x="${r.x1}" y="${r.y1}" width="${r.x2-r.x1}" height="${r.y2-r.y1}" fill="#fff"/>`; });
-    const u=unionRects(rb), dash=`${comma(Math.round(span*0.014))} ${comma(Math.round(span*0.010))}`;
-    mergeSegs(u.partitions).forEach(g=>{ s+=`<line x1="${g.x1}" y1="${g.y1}" x2="${g.x2}" y2="${g.y2}" stroke="#1a1a1a" stroke-width="${lw*0.7}" stroke-dasharray="${dash}"/>`; });
+    const u=unionRects(rb);
+    mergeSegs(u.partitions).forEach(g=>{ s+=`<line x1="${g.x1}" y1="${g.y1}" x2="${g.x2}" y2="${g.y2}" stroke="#1a1a1a" stroke-width="${lw*0.5}"/>`; });
     mergeSegs(u.outline).forEach(g=>{ s+=`<line x1="${g.x1}" y1="${g.y1}" x2="${g.x2}" y2="${g.y2}" stroke="#1a1a1a" stroke-width="${lw*1.4}" stroke-linecap="square"/>`; });
   }
-  // 多角形：直角形は四角に自動分割→白塗り＋分割線(点線=補助線)＋外周(実線=躯体)。斜め(三斜)は自前の輪郭
-  const dash=`${comma(Math.round(span*0.014))} ${comma(Math.round(span*0.010))}`;
+  // 多角形：直角形は四角に自動分割→白塗り＋分割線(細実線=求積線)＋外周(太実線=躯体)。斜め(三斜)は自前の輪郭
   floor.shapes.filter(sh=>sh.kind!=='site'&&sh.kind!=='rect').forEach(sh=>{
     const pts=sh.verts.map(v=>`${v.x},${v.y}`).join(' ');
     const rd=decomposeRectilinear(sh.verts);
     if(rd){
       s+=`<polygon points="${pts}" fill="#fff" stroke="none"/>`;
       const u=unionRects(rd);
-      mergeSegs(u.partitions).forEach(g=>{ s+=`<line x1="${g.x1}" y1="${g.y1}" x2="${g.x2}" y2="${g.y2}" stroke="#1a1a1a" stroke-width="${lw*0.7}" stroke-dasharray="${dash}"/>`; });
+      mergeSegs(u.partitions).forEach(g=>{ s+=`<line x1="${g.x1}" y1="${g.y1}" x2="${g.x2}" y2="${g.y2}" stroke="#1a1a1a" stroke-width="${lw*0.5}"/>`; });
       mergeSegs(u.outline).forEach(g=>{ s+=`<line x1="${g.x1}" y1="${g.y1}" x2="${g.x2}" y2="${g.y2}" stroke="#1a1a1a" stroke-width="${lw*1.4}" stroke-linecap="square"/>`; });
     } else {
       s+=`<polygon points="${pts}" fill="#fff" stroke="#1a1a1a" stroke-width="${lw*1.3}"/>`;
     }
   });
-  // 寸法（矩形・直角形=外周辺／斜め多角形=全辺）
+  // 各区画の四角を集める（対角線×と寸法チェーンの両方で使う）
+  const drects=[];
   floor.shapes.filter(sh=>sh.kind!=='site').forEach(sh=>{
-    const cx=sh.verts.reduce((a,v)=>a+v.x,0)/sh.verts.length, cy=sh.verts.reduce((a,v)=>a+v.y,0)/sh.verts.length;
-    let rd;
-    if(sh.kind==='rect'){
-      const xs=sh.verts.map(v=>v.x), ys=sh.verts.map(v=>v.y);
-      s+=dimH(Math.min(...xs),Math.max(...xs),Math.min(...ys),off,lw,fz);
-      s+=dimV(Math.min(...ys),Math.max(...ys),Math.min(...xs),off,lw,fz);
-    } else if((rd=decomposeRectilinear(sh.verts))){
-      mergeSegs(unionRects(rd).outline).forEach(g=>{ s+=dimEdge({x:g.x1,y:g.y1},{x:g.x2,y:g.y2},{x:cx,y:cy},off,lw,fz); });
-    } else {
-      for(let i=0;i<sh.verts.length;i++){ s+=dimEdge(sh.verts[i],sh.verts[(i+1)%sh.verts.length],{x:cx,y:cy},off,lw,fz); }
-    }
+    if(sh.kind==='rect'){ drects.push(rectBounds(sh)); }
+    else { const rd=decomposeRectilinear(sh.verts); if(rd) rd.forEach(r=>drects.push(r)); }
   });
-  // 区画番号（各求積単位＝分割した四角ごとに①②③）
-  (items||[]).forEach(it=>{ s+=`<text x="${it.cx}" y="${it.cy}" font-size="${nz}" text-anchor="middle" dominant-baseline="central" fill="#1a1a1a">${circ(it.num)}</text>`; });
+  // ★求積図の標準表記：各区画に対角線（×）を引く＝面積算定の区画であることを明示
+  drects.forEach(r=>{
+    s+=`<line x1="${r.x1}" y1="${r.y1}" x2="${r.x2}" y2="${r.y2}" stroke="#1a1a1a" stroke-width="${lw*0.4}"/>`
+      +`<line x1="${r.x2}" y1="${r.y1}" x2="${r.x1}" y2="${r.y2}" stroke="#1a1a1a" stroke-width="${lw*0.4}"/>`;
+  });
+  // 斜め多角形（四角に分割できない＝三斜）は全頂点へ対角線を扇状に＝三角形分割の表記
+  floor.shapes.filter(sh=>sh.kind!=='site'&&sh.kind!=='rect'&&!decomposeRectilinear(sh.verts)).forEach(sh=>{
+    const v=sh.verts; for(let i=2;i<v.length-1;i++){ s+=`<line x1="${v[0].x}" y1="${v[0].y}" x2="${v[i].x}" y2="${v[i].y}" stroke="#1a1a1a" stroke-width="${lw*0.4}"/>`; }
+  });
+  // 寸法（求積図の作法・任意）：求積図の本質は各区画の×と求積表。寸法は補助なので「寸法」OFFで消せる
+  //   ・直角の躯体はフロア全体のグリッド座標を集め、外周に一段だけ（上＝間口／左＝奥行・内側には入れない）
+  //   ・斜め多角形（四角に分割できない＝三斜）は従来どおり各辺に
+  if(settings.showDim){
+    if(drects.length){
+      const gx=uniqSorted(drects.reduce((a,r)=>(a.push(r.x1,r.x2),a),[]));
+      const gy=uniqSorted(drects.reduce((a,r)=>(a.push(r.y1,r.y2),a),[]));
+      s+=dimChainH(gx, drects, Math.min(...gy), off, lw, fz);   // 上＝間口
+      s+=dimChainV(gy, drects, Math.min(...gx), off, lw, fz);   // 左＝奥行
+    }
+    floor.shapes.filter(sh=>sh.kind!=='site'&&sh.kind!=='rect'&&!decomposeRectilinear(sh.verts)).forEach(sh=>{
+      const cx=sh.verts.reduce((a,v)=>a+v.x,0)/sh.verts.length, cy=sh.verts.reduce((a,v)=>a+v.y,0)/sh.verts.length;
+      for(let i=0;i<sh.verts.length;i++){ s+=dimEdge(sh.verts[i],sh.verts[(i+1)%sh.verts.length],{x:cx,y:cy},off,lw,fz); }
+    });
+  }
+  // 区画番号（各求積単位＝分割した四角ごとに①②③）。×の交点に白フチで重ねて視認性を確保
+  (items||[]).forEach(it=>{ s+=`<circle cx="${it.cx}" cy="${it.cy}" r="${nz*0.62}" fill="#fff"/>`
+    +`<text x="${it.cx}" y="${it.cy}" font-size="${nz}" text-anchor="middle" dominant-baseline="central" fill="#1a1a1a">${circ(it.num)}</text>`; });
   // 撤去シンボル＋有効寸法（現況の主役＝撤去物を紙にも出す）
   (floor.symbols||[]).forEach(sym=>{ s+=printSymbolSVG(sym, span, lw, fz); });
   (floor.effdims||[]).forEach(d=>{ s+=printEffDimSVG(d, lw, fz); });
@@ -1462,6 +1478,35 @@ function dimV(y1,y2,x,off,lw,fz){ const dx=x-off, my=(y1+y2)/2, gap=off*0.18, r=
     +`<line x1="${dx}" y1="${y1}" x2="${dx}" y2="${y2}" stroke="${DIMC}" stroke-width="${lw*0.7}"/>`
     +dimDot(dx,y1,r)+dimDot(dx,y2,r)
     +`<text x="${dx-fz*0.5}" y="${my}" font-size="${fz}" text-anchor="middle" dominant-baseline="central" transform="rotate(-90 ${dx-fz*0.5} ${my})" fill="${DIMT}">${comma(y2-y1)}</text>`; }
+/* 寸法チェーン：フロア全体のグリッド座標を躯体の外に一段で並べる（求積図の作法）。
+   covered＝その区間に躯体があるところだけ寸法を打つ（離れ棟の隙間には打たない）。
+   狭い区間は数字を互い違い（千鳥）にして重なりを防ぐ。 */
+function dimChainH(xs, rects, yTop, off, lw, fz){   // 上＝間口（数字は上）
+  const dy=yTop-off, gap=off*0.18, r=lw*1.8; let g='', lo=true; const seen=new Set();
+  const ext=x=>{ if(seen.has(x))return ''; seen.add(x);
+    return `<line x1="${x}" y1="${yTop-gap}" x2="${x}" y2="${dy-gap*0.6}" stroke="${DIMC}" stroke-width="${lw*0.6}"/>`+dimDot(x,dy,r); };
+  for(let i=0;i<xs.length-1;i++){ const x1=xs[i],x2=xs[i+1],val=x2-x1; if(val<=0) continue;
+    if(!rects.some(rr=>Math.abs(rr.y1-yTop)<0.5&&rr.x1<=x1+0.5&&rr.x2>=x2-0.5)) continue;   // 躯体が上辺に接している区間だけ（浮いた寸法を出さない）
+    g+=`<line x1="${x1}" y1="${dy}" x2="${x2}" y2="${dy}" stroke="${DIMC}" stroke-width="${lw*0.7}"/>`+ext(x1)+ext(x2);
+    const mid=(x1+x2)/2, tight=val<fz*3.2, ty=(tight&&!lo)?dy-fz*1.7:dy-fz*0.5;
+    if(tight&&!lo) g+=`<line x1="${mid}" y1="${dy}" x2="${mid}" y2="${ty+fz*0.3}" stroke="${DIMC}" stroke-width="${lw*0.5}"/>`;
+    g+=`<text x="${mid}" y="${ty}" font-size="${fz}" text-anchor="middle" fill="${DIMT}">${comma(val)}</text>`;
+    if(tight) lo=!lo; }
+  return g;
+}
+function dimChainV(ys, rects, xLeft, off, lw, fz){   // 左＝奥行（数字は左・縦書き）
+  const dx=xLeft-off, gap=off*0.18, r=lw*1.8; let g='', lo=true; const seen=new Set();
+  const ext=y=>{ if(seen.has(y))return ''; seen.add(y);
+    return `<line x1="${xLeft-gap}" y1="${y}" x2="${dx-gap*0.6}" y2="${y}" stroke="${DIMC}" stroke-width="${lw*0.6}"/>`+dimDot(dx,y,r); };
+  for(let i=0;i<ys.length-1;i++){ const y1=ys[i],y2=ys[i+1],val=y2-y1; if(val<=0) continue;
+    if(!rects.some(rr=>Math.abs(rr.x1-xLeft)<0.5&&rr.y1<=y1+0.5&&rr.y2>=y2-0.5)) continue;   // 躯体が左辺に接している区間だけ
+    g+=`<line x1="${dx}" y1="${y1}" x2="${dx}" y2="${y2}" stroke="${DIMC}" stroke-width="${lw*0.7}"/>`+ext(y1)+ext(y2);
+    const my=(y1+y2)/2, tight=val<fz*3.2, tx=(tight&&!lo)?dx-fz*1.7:dx-fz*0.5;
+    if(tight&&!lo) g+=`<line x1="${dx}" y1="${my}" x2="${tx+fz*0.3}" y2="${my}" stroke="${DIMC}" stroke-width="${lw*0.5}"/>`;
+    g+=`<text x="${tx}" y="${my}" font-size="${fz}" text-anchor="middle" dominant-baseline="central" transform="rotate(-90 ${tx} ${my})" fill="${DIMT}">${comma(val)}</text>`;
+    if(tight) lo=!lo; }
+  return g;
+}
 function dimEdge(a,b,c,off,lw,fz){
   let nx=(b.y-a.y), ny=-(b.x-a.x); const nl=Math.hypot(nx,ny)||1; nx/=nl; ny/=nl;
   const mx=(a.x+b.x)/2,my=(a.y+b.y)/2; if((mx-c.x)*nx+(my-c.y)*ny<0){ nx=-nx; ny=-ny; }
