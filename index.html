@@ -128,8 +128,13 @@
     cursor:pointer; font-size:12px; color:var(--ink);}
   .chip:hover{border-color:var(--accent); color:var(--accent);}
 
-  #props{border-top:1px solid var(--line); margin-top:12px; padding-top:10px;}
+  /* 選択中の編集＝キャンバス右上にフローティング（サイドバー下端に埋もれて見えない問題の解消） */
+  #props{position:fixed; top:58px; right:14px; width:240px; max-height:76vh; overflow:auto; z-index:60;
+    background:#fff; border:1px solid var(--line); border-radius:10px; box-shadow:0 8px 28px rgba(0,0,0,.16); padding:10px 12px;}
   #props.hidden{display:none;}
+  #props .props-head{display:flex; align-items:center; justify-content:space-between; font-size:12px; font-weight:600; color:#555; margin-bottom:8px;}
+  #props .props-head button{border:none; background:none; font-size:18px; line-height:1; color:#999; cursor:pointer; padding:0 2px;}
+  #props .props-head button:hover{color:var(--ink);}
   #statusbar{position:absolute; left:0; bottom:0; font-size:11px; color:var(--muted);
     background:rgba(255,255,255,.9); padding:3px 8px; pointer-events:none;}
 </style>
@@ -186,9 +191,9 @@
   <div class="grid3" id="symbol-pal"></div>
   <div class="hint">クリックで選択→図面をクリックで配置。ブロック塀は始点・終点の2クリック。選択中に R で90°回転。</div>
 
-  <!-- 選択中プロパティ -->
+  <!-- 選択中プロパティ（キャンバス上にフローティング表示） -->
   <div id="props" class="hidden">
-    <h2>選択中の編集</h2>
+    <div class="props-head"><span>選択中の編集</span><button id="props-close" title="閉じる（Esc）">×</button></div>
     <div id="props-body"></div>
     <button class="tool-btn" id="del-btn" style="margin-top:8px;">削除（Delete）</button>
   </div>
@@ -1230,6 +1235,8 @@ document.getElementById('redo-btn').onclick=redo;
 document.getElementById('proj-btn').onclick=openProjPanel;
 // 選択中の削除ボタン（キーボード無しiPadの主削除手段）
 document.getElementById('del-btn').onclick=()=>deleteSelected();
+// 編集パネルを閉じる＝選択解除
+document.getElementById('props-close').onclick=()=>{ ui.selId=null; render(); };
 // 1階→2階 複製
 document.getElementById('copy-1to2').onclick=copy1Fto2F;
 
