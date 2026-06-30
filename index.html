@@ -1369,8 +1369,8 @@ function fitPrint(){
 }
 window.addEventListener('resize',()=>{ const v=document.getElementById('printview'); if(v && !v.classList.contains('hidden')) fitPrint(); });
 
-/* 各階の図（外形＋番号＋寸法）を bbox にフィットさせた SVG 文字列 */
-function buildFloorSVG(floor, numbers){
+/* 各階の図（外形＋番号＋寸法）。items=[{num,cx,cy}] 各求積単位の番号位置 */
+function buildFloorSVG(floor, items){
   let minx=Infinity,miny=Infinity,maxx=-Infinity,maxy=-Infinity,any=false;
   const eat=(x,y)=>{any=true;minx=Math.min(minx,x);miny=Math.min(miny,y);maxx=Math.max(maxx,x);maxy=Math.max(maxy,y);};
   floor.shapes.forEach(s=>s.verts.forEach(v=>eat(v.x,v.y)));
@@ -1410,11 +1410,9 @@ function buildFloorSVG(floor, numbers){
       s+=`<polygon points="${pts}" fill="#fff" stroke="#1a1a1a" stroke-width="${lw*1.3}"/>`;
     }
   });
-  // 区画番号＋寸法（矩形・直角形=外周辺の寸法／斜め多角形=全辺）
+  // 寸法（矩形・直角形=外周辺／斜め多角形=全辺）
   floor.shapes.filter(sh=>sh.kind!=='site').forEach(sh=>{
     const cx=sh.verts.reduce((a,v)=>a+v.x,0)/sh.verts.length, cy=sh.verts.reduce((a,v)=>a+v.y,0)/sh.verts.length;
-    const num=numbers.get(sh.id);
-    if(num) s+=`<text x="${cx}" y="${cy}" font-size="${nz}" text-anchor="middle" dominant-baseline="central" fill="#1a1a1a">${circ(num)}</text>`;
     let rd;
     if(sh.kind==='rect'){
       const xs=sh.verts.map(v=>v.x), ys=sh.verts.map(v=>v.y);
@@ -1426,22 +1424,26 @@ function buildFloorSVG(floor, numbers){
       for(let i=0;i<sh.verts.length;i++){ s+=dimEdge(sh.verts[i],sh.verts[(i+1)%sh.verts.length],{x:cx,y:cy},off,lw,fz); }
     }
   });
+  // 区画番号（各求積単位＝分割した四角ごとに①②③）
+  (items||[]).forEach(it=>{ s+=`<text x="${it.cx}" y="${it.cy}" font-size="${nz}" text-anchor="middle" dominant-baseline="central" fill="#1a1a1a">${circ(it.num)}</text>`; });
   // 撤去シンボル＋有効寸法（現況の主役＝撤去物を紙にも出す）
   (floor.symbols||[]).forEach(sym=>{ s+=printSymbolSVG(sym, span, lw, fz); });
   (floor.effdims||[]).forEach(d=>{ s+=printEffDimSVG(d, lw, fz); });
   floor.texts.forEach(t=>{ s+=`<text x="${t.x}" y="${t.y}" font-size="${fz*1.15}" fill="#1a1a1a">${esc(t.str||'')}</text>`; });
   return s+'</svg>';
 }
+/* 寸法は補助情報＝細いグレー線＋濃グレー数字。躯体(黒実線)・求積線(黒点線)と一目で区別する */
+const DIMC='#9aa0a0', DIMT='#555';
 function dimH(x1,x2,y,off,lw,fz){ const dy=y-off;
-  return `<line x1="${x1}" y1="${y}" x2="${x1}" y2="${dy}" stroke="#1a1a1a" stroke-width="${lw}"/>`
-    +`<line x1="${x2}" y1="${y}" x2="${x2}" y2="${dy}" stroke="#1a1a1a" stroke-width="${lw}"/>`
-    +`<line x1="${x1}" y1="${dy}" x2="${x2}" y2="${dy}" stroke="#1a1a1a" stroke-width="${lw}"/>`
-    +`<text x="${(x1+x2)/2}" y="${dy-fz*0.5}" font-size="${fz}" text-anchor="middle" fill="#1a1a1a">${comma(x2-x1)}</text>`; }
+  return `<line x1="${x1}" y1="${y}" x2="${x1}" y2="${dy}" stroke="${DIMC}" stroke-width="${lw*0.7}"/>`
+    +`<line x1="${x2}" y1="${y}" x2="${x2}" y2="${dy}" stroke="${DIMC}" stroke-width="${lw*0.7}"/>`
+    +`<line x1="${x1}" y1="${dy}" x2="${x2}" y2="${dy}" stroke="${DIMC}" stroke-width="${lw*0.7}"/>`
+    +`<text x="${(x1+x2)/2}" y="${dy-fz*0.5}" font-size="${fz}" text-anchor="middle" fill="${DIMT}">${comma(x2-x1)}</text>`; }
 function dimV(y1,y2,x,off,lw,fz){ const dx=x-off, my=(y1+y2)/2;
-  return `<line x1="${x}" y1="${y1}" x2="${dx}" y2="${y1}" stroke="#1a1a1a" stroke-width="${lw}"/>`
-    +`<line x1="${x}" y1="${y2}" x2="${dx}" y2="${y2}" stroke="#1a1a1a" stroke-width="${lw}"/>`
-    +`<line x1="${dx}" y1="${y1}" x2="${dx}" y2="${y2}" stroke="#1a1a1a" stroke-width="${lw}"/>`
-    +`<text x="${dx-fz*0.5}" y="${my}" font-size="${fz}" text-anchor="middle" dominant-baseline="central" transform="rotate(-90 ${dx-fz*0.5} ${my})" fill="#1a1a1a">${comma(y2-y1)}</text>`; }
+  return `<line x1="${x}" y1="${y1}" x2="${dx}" y2="${y1}" stroke="${DIMC}" stroke-width="${lw*0.7}"/>`
+    +`<line x1="${x}" y1="${y2}" x2="${dx}" y2="${y2}" stroke="${DIMC}" stroke-width="${lw*0.7}"/>`
+    +`<line x1="${dx}" y1="${y1}" x2="${dx}" y2="${y2}" stroke="${DIMC}" stroke-width="${lw*0.7}"/>`
+    +`<text x="${dx-fz*0.5}" y="${my}" font-size="${fz}" text-anchor="middle" dominant-baseline="central" transform="rotate(-90 ${dx-fz*0.5} ${my})" fill="${DIMT}">${comma(y2-y1)}</text>`; }
 function dimEdge(a,b,c,off,lw,fz){
   let nx=(b.y-a.y), ny=-(b.x-a.x); const nl=Math.hypot(nx,ny)||1; nx/=nl; ny/=nl;
   const mx=(a.x+b.x)/2,my=(a.y+b.y)/2; if((mx-c.x)*nx+(my-c.y)*ny<0){ nx=-nx; ny=-ny; }
@@ -1449,10 +1451,10 @@ function dimEdge(a,b,c,off,lw,fz){
   const len=Math.round(Math.hypot(b.x-a.x,b.y-a.y));
   let ang=Math.atan2(by-ay,bx-ax)*180/Math.PI; if(ang>90||ang<-90)ang+=180;
   const tx=(ax+bx)/2,ty=(ay+by)/2;
-  return `<line x1="${a.x}" y1="${a.y}" x2="${ax}" y2="${ay}" stroke="#1a1a1a" stroke-width="${lw}"/>`
-    +`<line x1="${b.x}" y1="${b.y}" x2="${bx}" y2="${by}" stroke="#1a1a1a" stroke-width="${lw}"/>`
-    +`<line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}" stroke="#1a1a1a" stroke-width="${lw}"/>`
-    +`<text x="${tx}" y="${ty-fz*0.4}" font-size="${fz}" text-anchor="middle" transform="rotate(${ang} ${tx} ${ty})" fill="#1a1a1a">${comma(len)}</text>`;
+  return `<line x1="${a.x}" y1="${a.y}" x2="${ax}" y2="${ay}" stroke="${DIMC}" stroke-width="${lw*0.7}"/>`
+    +`<line x1="${b.x}" y1="${b.y}" x2="${bx}" y2="${by}" stroke="${DIMC}" stroke-width="${lw*0.7}"/>`
+    +`<line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}" stroke="${DIMC}" stroke-width="${lw*0.7}"/>`
+    +`<text x="${tx}" y="${ty-fz*0.4}" font-size="${fz}" text-anchor="middle" transform="rotate(${ang} ${tx} ${ty})" fill="${DIMT}">${comma(len)}</text>`;
 }
 
 /* ===== 印刷図：撤去シンボル／有効寸法（画面の drawSymbol を mm 座標で再現） ===== */
@@ -1500,24 +1502,27 @@ function teardownRows(){
   return rows;
 }
 
+// 求積の単位：矩形=1枚／直角多角形=分割した四角ごと／斜め多角形=1枚。各単位を①②③で別々に数える
+function unitRect(b, name){ const w=round2((b.x2-b.x1)/1000), d=round2((b.y2-b.y1)/1000), a=round2(w*d);
+  return {name:name||'区画', cx:(b.x1+b.x2)/2, cy:(b.y1+b.y2)/2, area:a, expr:`${w.toFixed(2)} × ${d.toFixed(2)} ＝ ${a.toFixed(2)}`}; }
+function floorUnits(floor){
+  const units=[];
+  (floor.shapes||[]).filter(s=>s.kind!=='site').forEach(s=>{
+    if(s.kind==='rect'){ units.push(unitRect(rectBounds(s), s.name)); }
+    else { const rd=decomposeRectilinear(s.verts);
+      if(rd){ rd.forEach(b=>units.push(unitRect(b, s.name))); }
+      else { const c=centroid(s.verts), a=round2(m2(areaMm2(s.verts)));
+        units.push({name:s.name||'区画', cx:c.x, cy:c.y, area:a, expr:`＝ ${a.toFixed(2)}`}); } }
+  });
+  return units;
+}
+
 function buildPrint(){
-  const numbers=new Map(); let n=0;
+  let n=0;
   const groups=project.floors.map((f,fi)=>{
-    const shapes=f.shapes.filter(s=>s.kind!=='site');
-    const items=shapes.map(s=>{ n++; numbers.set(s.id,n);
-      let expr, area, rd;
-      const term=r=>{ const w=round2((r.x2-r.x1)/1000), d=round2((r.y2-r.y1)/1000); return {w,d,a:round2(w*d)}; };
-      if(s.kind==='rect'){ const xs=s.verts.map(v=>v.x),ys=s.verts.map(v=>v.y);
-        const t=term({x1:Math.min(...xs),x2:Math.max(...xs),y1:Math.min(...ys),y2:Math.max(...ys)});
-        area=t.a; expr=`${t.w.toFixed(2)} × ${t.d.toFixed(2)} ＝ ${area.toFixed(2)}`;
-      } else if((rd=decomposeRectilinear(s.verts))){
-        const ts=rd.map(term); area=round2(ts.reduce((a,t)=>a+t.a,0));   // 直角形＝四角分割の間口×奥行を足す
-        expr=ts.map(t=>`${t.w.toFixed(2)}×${t.d.toFixed(2)}`).join(' ＋ ')+` ＝ ${area.toFixed(2)}`;
-      } else { area=round2(m2(areaMm2(s.verts))); expr=`＝ ${area.toFixed(2)}`; }
-      return {num:n, name:s.name||'区画', expr, area};
-    });
-    const sum=+items.reduce((a,it)=>a+it.area,0).toFixed(2);   // 計＝各内訳行の合算（積み上げと必ず一致）
-    return {fi, name:f.name, items, sum, overlap:floorHasOverlap(f)};
+    const items=floorUnits(f).map(u=>{ n++; return {num:n, ...u}; });
+    const sum=round2(items.reduce((a,it)=>a+it.area,0));   // 計＝各単位(間口×奥行)の合算
+    return {f, fi, name:f.name, items, sum, overlap:floorHasOverlap(f)};
   }).filter(g=>g.items.length);
 
   let rows='';
@@ -1530,11 +1535,9 @@ function buildPrint(){
   });
   if(!rows) rows=`<tr><td colspan="3" style="color:#999">区画がありません（矩形・多角形を描いてください）</td></tr>`;
 
-  // 区画(敷地以外)がある階だけ図を出す。1つも無ければ1階だけ表示
-  let drawFloors=project.floors.filter(f=>f.shapes.some(s=>s.kind!=='site'));
-  if(!drawFloors.length) drawFloors=project.floors.slice(0,1);
   let panels='';
-  drawFloors.forEach(f=>{ panels+=`<section class="p-panel"><h3>${esc(f.name)}平面図</h3><div class="p-cv">${buildFloorSVG(f,numbers)}</div></section>`; });
+  groups.forEach(g=>{ panels+=`<section class="p-panel"><h3>${esc(g.name)}平面図</h3><div class="p-cv">${buildFloorSVG(g.f, g.items)}</div></section>`; });
+  if(!groups.length){ const f=project.floors[0]; panels=`<section class="p-panel"><h3>${esc(f.name)}平面図</h3><div class="p-cv">${buildFloorSVG(f, [])}</div></section>`; }
 
   // 撤去数量表（撤去シンボルがあれば左下に。無ければ出さない）
   const td=teardownRows();
