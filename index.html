@@ -948,7 +948,8 @@ function buildFloorSVG(floor, numbers){
       s+=dimH(Math.min(...xs),Math.max(...xs),Math.min(...ys),off,lw,fz);
       s+=dimV(Math.min(...ys),Math.max(...ys),Math.min(...xs),off,lw,fz);
     } else {
-      (sh.edgeDims||[]).forEach(i=>{ s+=dimEdge(sh.verts[i],sh.verts[(i+1)%sh.verts.length],{x:cx,y:cy},off,lw,fz); });
+      // 多角形は全辺に寸法を自動表示（誰が見ても各辺の寸法が分かるように）
+      for(let i=0;i<sh.verts.length;i++){ s+=dimEdge(sh.verts[i],sh.verts[(i+1)%sh.verts.length],{x:cx,y:cy},off,lw,fz); }
     }
   });
   floor.texts.forEach(t=>{ s+=`<text x="${t.x}" y="${t.y}" font-size="${fz*1.15}" fill="#1a1a1a">${esc(t.str||'')}</text>`; });
@@ -1003,8 +1004,11 @@ function buildPrint(){
   });
   if(!rows) rows=`<tr><td colspan="3" style="color:#999">区画がありません（矩形・多角形を描いてください）</td></tr>`;
 
+  // 区画(敷地以外)がある階だけ図を出す。1つも無ければ1階だけ表示
+  let drawFloors=project.floors.filter(f=>f.shapes.some(s=>s.kind!=='site'));
+  if(!drawFloors.length) drawFloors=project.floors.slice(0,1);
   let panels='';
-  project.floors.forEach(f=>{ panels+=`<section class="p-panel"><h3>${esc(f.name)}平面図</h3><div class="p-cv">${buildFloorSVG(f,numbers)}</div></section>`; });
+  drawFloors.forEach(f=>{ panels+=`<section class="p-panel"><h3>${esc(f.name)}平面図</h3><div class="p-cv">${buildFloorSVG(f,numbers)}</div></section>`; });
 
   const title=`${esc(project.meta.title||'○○様邸 解体工事')}　現況測量図（求積図）　S ＝ 1 / ${printScale}`;
   return `<div class="p-frame"><div class="p-draw">${panels}</div>`
