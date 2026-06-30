@@ -1351,24 +1351,28 @@ function ensurePrintDOM(){
       <label>工事名 <input id="p-title" type="text" placeholder="○○様邸 解体工事" style="width:170px"></label>
       <label>縮尺 <select id="p-scale"><option value="100">1 / 100</option><option value="150">1 / 150</option><option value="200">1 / 200</option></select></label>
       <label>用紙 <select id="p-paper"><option value="a3">A3 横</option><option value="a4">A4 横</option></select></label>
+      <span class="p-hint" style="margin-left:14px">PDF/印刷は <b>余白「なし」</b>・<b>倍率100%</b> で（実寸どおり・縮尺が合う）</span>
       <span style="flex:1"></span>
-      <button id="p-print" class="go">印刷</button>
+      <button id="p-print" class="go">印刷 / PDF</button>
       <button id="p-close">閉じる</button>
     </div>
     <div id="psheet-wrap"><div id="psheet" class="psheet"></div></div>`;
   document.body.appendChild(v);
-  document.getElementById('p-close').onclick=()=>v.classList.add('hidden');
-  document.getElementById('p-print').onclick=()=>window.print();
+  document.getElementById('p-close').onclick=()=>{ v.classList.add('hidden'); document.title=APP_TITLE; };  // 閉じたらアプリ名に戻す
+  document.getElementById('p-print').onclick=()=>{ document.title=printFileTitle(); window.print(); };       // PDFファイル名＝工事名
   document.getElementById('p-paper').onchange=e=>{ printPaper=e.target.value; document.body.classList.toggle('p-a4',printPaper==='a4'); setPrintPage(); fitPrint(); };
-  const ti=document.getElementById('p-title'); ti.value=project.meta.title||''; ti.oninput=()=>{ project.meta.title=ti.value; save(); refreshPrint(); };
+  const ti=document.getElementById('p-title'); ti.value=project.meta.title||''; ti.oninput=()=>{ project.meta.title=ti.value; save(); document.title=printFileTitle(); refreshPrint(); };
   const sc=document.getElementById('p-scale'); sc.value=String(printScale); sc.onchange=()=>{ printScale=Math.max(1,+sc.value||100); refreshPrint(); };
   setPrintPage();
 }
+const APP_TITLE='現況図兼求積図 ─ 解体工事';
+// PDF/印刷のファイル名に使うタイトル（＝工事名）。Chromeはdocument.titleを既定ファイル名にする
+function printFileTitle(){ const t=(project.meta.title||'').trim(); return t? (t+'　現況測量図') : '現況測量図（求積図）'; }
 function setPrintPage(){ const a4=printPaper==='a4';
   document.getElementById('print-page').textContent='@page{ size:'+(a4?'297mm 210mm':'420mm 297mm')+'; margin:0; }'; }
 function refreshPrint(){ const sheet=document.getElementById('psheet'); if(sheet){ sheet.innerHTML=buildPrint(); fitPrint(); } }
 function openPrint(){ ensurePrintDOM(); document.getElementById('printview').classList.remove('hidden');
-  document.body.classList.toggle('p-a4',printPaper==='a4'); refreshPrint(); }
+  document.body.classList.toggle('p-a4',printPaper==='a4'); document.title=printFileTitle(); refreshPrint(); }
 function fitPrint(){
   const wrap=document.getElementById('psheet-wrap'), sheet=document.getElementById('psheet'); if(!wrap||!sheet)return;
   const probe=document.createElement('div'); probe.style.cssText='width:100mm;position:absolute;visibility:hidden'; document.body.appendChild(probe);
@@ -1575,6 +1579,8 @@ const PRINT_CSS=`
   #printview.hidden{ display:none; }
   #printbar{ flex:none; height:46px; display:flex; align-items:center; gap:12px; padding:0 14px; background:#fff; border-bottom:1px solid #d4d8d8; font-size:12.5px; }
   #printbar label{ display:flex; align-items:center; gap:4px; color:#555; }
+  #printbar .p-hint{ color:#b3322a; font-size:11.5px; }
+  #printbar .p-hint b{ color:#b3322a; }
   #printbar input,#printbar select{ font-size:12.5px; padding:4px 6px; border:1px solid #cfd4d4; border-radius:5px; }
   #printbar button{ font-size:12.5px; padding:7px 12px; border:1px solid #cfd4d4; border-radius:6px; background:#fff; cursor:pointer; }
   #printbar button.go{ border-color:#0ABAB5; }
