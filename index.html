@@ -1379,7 +1379,7 @@ function buildFloorSVG(floor, items){
   (floor.effdims||[]).forEach(d=>{ if(d.a&&d.b){eat(d.a.x,d.a.y);eat(d.b.x,d.b.y);} });
   if(!any) return '<svg viewBox="0 0 10 10"></svg>';
   const bw=maxx-minx,bh=maxy-miny,span=Math.max(bw,bh,1000);
-  const pad=span*0.20, off=span*0.06, fz=span*0.028, nz=span*0.055, lw=span*0.0016;
+  const pad=span*0.22, off=span*0.10, fz=span*0.028, nz=span*0.055, lw=span*0.0016;   // off=躯体から寸法を離す距離
   // 実寸スケール：用紙mm ＝ 実寸mm ÷ 縮尺（例 1/100）。これで定規で測っても合う図になる
   const pw=(bw+pad*2)/printScale, ph=(bh+pad*2)/printScale;
   let s=`<svg width="${round2(pw)}mm" height="${round2(ph)}mm" viewBox="${minx-pad} ${miny-pad} ${bw+pad*2} ${bh+pad*2}" preserveAspectRatio="xMidYMid meet" font-family="sans-serif">`;
@@ -1432,28 +1432,35 @@ function buildFloorSVG(floor, items){
   floor.texts.forEach(t=>{ s+=`<text x="${t.x}" y="${t.y}" font-size="${fz*1.15}" fill="#1a1a1a">${esc(t.str||'')}</text>`; });
   return s+'</svg>';
 }
-/* 寸法は補助情報＝細いグレー線＋濃グレー数字。躯体(黒実線)・求積線(黒点線)と一目で区別する */
-const DIMC='#9aa0a0', DIMT='#555';
-function dimH(x1,x2,y,off,lw,fz){ const dy=y-off;
-  return `<line x1="${x1}" y1="${y}" x2="${x1}" y2="${dy}" stroke="${DIMC}" stroke-width="${lw*0.7}"/>`
-    +`<line x1="${x2}" y1="${y}" x2="${x2}" y2="${dy}" stroke="${DIMC}" stroke-width="${lw*0.7}"/>`
+/* 寸法は裕也の実測図の作法：躯体から「離して」引出線＋端部に●＋数字は上。色は黒（実図どおり）。
+   引出線は対象に触れず手前で止め、寸法線の端に小さな●を打つ。 */
+const DIMC='#1a1a1a', DIMT='#1a1a1a';
+function dimDot(x,y,r){ return `<circle cx="${x}" cy="${y}" r="${r}" fill="${DIMC}"/>`; }
+function dimH(x1,x2,y,off,lw,fz){ const dy=y-off, gap=off*0.18, r=lw*1.8;   // 上方向に離す
+  return `<line x1="${x1}" y1="${y-gap}" x2="${x1}" y2="${dy-gap*0.6}" stroke="${DIMC}" stroke-width="${lw*0.6}"/>`
+    +`<line x1="${x2}" y1="${y-gap}" x2="${x2}" y2="${dy-gap*0.6}" stroke="${DIMC}" stroke-width="${lw*0.6}"/>`
     +`<line x1="${x1}" y1="${dy}" x2="${x2}" y2="${dy}" stroke="${DIMC}" stroke-width="${lw*0.7}"/>`
+    +dimDot(x1,dy,r)+dimDot(x2,dy,r)
     +`<text x="${(x1+x2)/2}" y="${dy-fz*0.5}" font-size="${fz}" text-anchor="middle" fill="${DIMT}">${comma(x2-x1)}</text>`; }
-function dimV(y1,y2,x,off,lw,fz){ const dx=x-off, my=(y1+y2)/2;
-  return `<line x1="${x}" y1="${y1}" x2="${dx}" y2="${y1}" stroke="${DIMC}" stroke-width="${lw*0.7}"/>`
-    +`<line x1="${x}" y1="${y2}" x2="${dx}" y2="${y2}" stroke="${DIMC}" stroke-width="${lw*0.7}"/>`
+function dimV(y1,y2,x,off,lw,fz){ const dx=x-off, my=(y1+y2)/2, gap=off*0.18, r=lw*1.8;   // 左方向に離す
+  return `<line x1="${x-gap}" y1="${y1}" x2="${dx-gap*0.6}" y2="${y1}" stroke="${DIMC}" stroke-width="${lw*0.6}"/>`
+    +`<line x1="${x-gap}" y1="${y2}" x2="${dx-gap*0.6}" y2="${y2}" stroke="${DIMC}" stroke-width="${lw*0.6}"/>`
     +`<line x1="${dx}" y1="${y1}" x2="${dx}" y2="${y2}" stroke="${DIMC}" stroke-width="${lw*0.7}"/>`
+    +dimDot(dx,y1,r)+dimDot(dx,y2,r)
     +`<text x="${dx-fz*0.5}" y="${my}" font-size="${fz}" text-anchor="middle" dominant-baseline="central" transform="rotate(-90 ${dx-fz*0.5} ${my})" fill="${DIMT}">${comma(y2-y1)}</text>`; }
 function dimEdge(a,b,c,off,lw,fz){
   let nx=(b.y-a.y), ny=-(b.x-a.x); const nl=Math.hypot(nx,ny)||1; nx/=nl; ny/=nl;
   const mx=(a.x+b.x)/2,my=(a.y+b.y)/2; if((mx-c.x)*nx+(my-c.y)*ny<0){ nx=-nx; ny=-ny; }
+  const gap=off*0.18, r=lw*1.8;
+  const a0x=a.x+nx*gap, a0y=a.y+ny*gap, b0x=b.x+nx*gap, b0y=b.y+ny*gap;   // 引出線の起点（対象から少し離す）
   const ax=a.x+nx*off,ay=a.y+ny*off,bx=b.x+nx*off,by=b.y+ny*off;
   const len=Math.round(Math.hypot(b.x-a.x,b.y-a.y));
   let ang=Math.atan2(by-ay,bx-ax)*180/Math.PI; if(ang>90||ang<-90)ang+=180;
   const tx=(ax+bx)/2,ty=(ay+by)/2;
-  return `<line x1="${a.x}" y1="${a.y}" x2="${ax}" y2="${ay}" stroke="${DIMC}" stroke-width="${lw*0.7}"/>`
-    +`<line x1="${b.x}" y1="${b.y}" x2="${bx}" y2="${by}" stroke="${DIMC}" stroke-width="${lw*0.7}"/>`
+  return `<line x1="${a0x}" y1="${a0y}" x2="${ax}" y2="${ay}" stroke="${DIMC}" stroke-width="${lw*0.6}"/>`
+    +`<line x1="${b0x}" y1="${b0y}" x2="${bx}" y2="${by}" stroke="${DIMC}" stroke-width="${lw*0.6}"/>`
     +`<line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}" stroke="${DIMC}" stroke-width="${lw*0.7}"/>`
+    +dimDot(ax,ay,r)+dimDot(bx,by,r)
     +`<text x="${tx}" y="${ty-fz*0.4}" font-size="${fz}" text-anchor="middle" transform="rotate(${ang} ${tx} ${ty})" fill="${DIMT}">${comma(len)}</text>`;
 }
 
