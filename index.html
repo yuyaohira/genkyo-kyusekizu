@@ -1319,7 +1319,7 @@ function ensurePrintDOM(){
     <div id="printbar">
       <b>印刷プレビュー</b>
       <label>工事名 <input id="p-title" type="text" placeholder="○○様邸 解体工事" style="width:170px"></label>
-      <label>縮尺 1/ <input id="p-scale" type="number" value="100" style="width:64px"></label>
+      <label>縮尺 <select id="p-scale"><option value="100">1 / 100</option><option value="150">1 / 150</option><option value="200">1 / 200</option></select></label>
       <label>用紙 <select id="p-paper"><option value="a3">A3 横</option><option value="a4">A4 横</option></select></label>
       <span style="flex:1"></span>
       <button id="p-print" class="go">印刷</button>
@@ -1331,7 +1331,7 @@ function ensurePrintDOM(){
   document.getElementById('p-print').onclick=()=>window.print();
   document.getElementById('p-paper').onchange=e=>{ printPaper=e.target.value; document.body.classList.toggle('p-a4',printPaper==='a4'); setPrintPage(); fitPrint(); };
   const ti=document.getElementById('p-title'); ti.value=project.meta.title||''; ti.oninput=()=>{ project.meta.title=ti.value; save(); refreshPrint(); };
-  const sc=document.getElementById('p-scale'); sc.value=printScale; sc.oninput=()=>{ printScale=Math.max(1,+sc.value||100); refreshPrint(); };
+  const sc=document.getElementById('p-scale'); sc.value=String(printScale); sc.onchange=()=>{ printScale=Math.max(1,+sc.value||100); refreshPrint(); };
   setPrintPage();
 }
 function setPrintPage(){ const a4=printPaper==='a4';
@@ -1360,7 +1360,9 @@ function buildFloorSVG(floor, numbers){
   if(!any) return '<svg viewBox="0 0 10 10"></svg>';
   const bw=maxx-minx,bh=maxy-miny,span=Math.max(bw,bh,1000);
   const pad=span*0.20, off=span*0.06, fz=span*0.028, nz=span*0.055, lw=span*0.0016;
-  let s=`<svg viewBox="${minx-pad} ${miny-pad} ${bw+pad*2} ${bh+pad*2}" preserveAspectRatio="xMidYMid meet" font-family="sans-serif">`;
+  // 実寸スケール：用紙mm ＝ 実寸mm ÷ 縮尺（例 1/100）。これで定規で測っても合う図になる
+  const pw=(bw+pad*2)/printScale, ph=(bh+pad*2)/printScale;
+  let s=`<svg width="${round2(pw)}mm" height="${round2(ph)}mm" viewBox="${minx-pad} ${miny-pad} ${bw+pad*2} ${bh+pad*2}" preserveAspectRatio="xMidYMid meet" font-family="sans-serif">`;
   // 敷地外形線
   floor.shapes.filter(sh=>sh.kind==='site').forEach(sh=>{
     const pts=sh.verts.map(v=>`${v.x},${v.y}`).join(' ');
@@ -1528,8 +1530,8 @@ const PRINT_CSS=`
   .p-draw{ flex:1; display:flex; gap:6mm; min-height:0; }
   .p-panel{ flex:1; min-width:0; border:0.8px solid #9aa0a0; display:flex; flex-direction:column; }
   .p-panel>h3{ margin:0; font-size:3.6mm; font-weight:700; padding:2mm 3mm; border-bottom:0.8px solid #9aa0a0; }
-  .p-cv{ flex:1; position:relative; }
-  .p-cv svg{ position:absolute; inset:0; width:100%; height:100%; }
+  .p-cv{ flex:1; position:relative; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+  .p-cv svg{ display:block; flex:none; }   /* 実寸mmで中央配置。収まらなければクリップ＝縮尺を上げる合図（黙って縮めない） */
   .p-footer{ flex:none; margin-top:5mm; display:flex; flex-direction:column; gap:3mm; }
   .p-clrow{ display:flex; justify-content:space-between; align-items:flex-end; gap:6mm; }
   .p-calc{ border:0.6px solid #1a1a1a; padding:2.5mm 4mm; }
