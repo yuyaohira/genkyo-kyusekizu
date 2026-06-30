@@ -1,5 +1,5 @@
 /* 現況図兼求積図 PWA Service Worker（オフライン対応・キャッシュ優先） */
-const CACHE = 'kyuseki-v9';
+const CACHE = 'kyuseki-v10';
 const ASSETS = [
   './', './index.html', './manifest.webmanifest',
   './icon-180.png', './icon-192.png', './icon-512.png'

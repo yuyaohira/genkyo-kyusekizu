@@ -176,7 +176,7 @@
   <h2>敷地・注記（概要でOK）</h2>
   <button class="tool-btn" data-tool="site">▭ 敷地線（線分・ざっくり）</button>
   <button class="tool-btn" data-tool="text">A 文字注記（前面道路など）</button>
-  <div class="hint">敷地は厳密でなく概形でOK。閉じれば外形線になります（求積には入りません）。文字はクリックで置いて後から編集。</div>
+  <div class="hint">敷地は厳密でなく概形でOK（求積には入りません）。<b>1本だけの線</b>も引けます＝2点クリック→<b>Enter</b>か<b>右クリック</b>で確定。始点に戻ってクリックすれば閉じた外形線に。文字はクリックで置いて後から編集。</div>
 
   <h2>階の操作</h2>
   <button class="tool-btn" id="copy-1to2">⇧ 1階の図形を2階へ複製</button>
@@ -716,7 +716,7 @@ function drawShape(svg,pane,s){
   // 敷地線：細い黒の外形線のみ（塗り・面積・名前は出さない／求積に入れない）
   if(s.kind==='site'){
     const sp=s.verts.map(v=>`${sx(v.x)},${sy(v.y)}`).join(' ');
-    const poly=el('polygon',{points:sp,fill:'none',stroke:sel?COL.sel:COL.ink,'stroke-width':sel?1.6:1,'stroke-linejoin':'round'});
+    const poly=el(s.open?'polyline':'polygon',{points:sp,fill:'none',stroke:sel?COL.sel:COL.ink,'stroke-width':sel?1.6:1,'stroke-linejoin':'round'});
     poly.style.cursor='move'; svg.appendChild(poly);
     poly.addEventListener('pointerdown',e=>{ if(ui.tool!=='select')return; e.stopPropagation(); selectEl(s.id,pane.floor);
       pushUndo(); const orig=s.verts.map(v=>({x:v.x,y:v.y})); const start=paneMm(pane.svg,e);
@@ -962,7 +962,7 @@ panes.forEach(pane=>{
       if(!ui.draft){ ui.draft={floor:pane.floor,verts:[sp],cursor:sp,kind:(ui.tool==='site'?'site':'poly')}; }
       else if(ui.draft.floor===pane.floor){
         const v=ui.draft.verts;
-        if(v.length>=3 && dist(sp,v[0])*view.scale<12){ finalizePoly(); return; }
+        if(v.length>=3 && dist(sp,v[0])*view.scale<12){ ui.draft.closed=true; finalizePoly(); return; }  // 始点に戻る＝閉じる
         v.push(sp);
       }
       render(); return;
@@ -1042,8 +1042,11 @@ function finalizePoly(){
   if(!ui.draft)return; let v=ui.draft.verts.slice();
   // 末尾の重複点を除去
   while(v.length>=2 && dist(v[v.length-1],v[v.length-2])<1) v.pop();
-  if(v.length>=3){ pushUndo(); const kind=ui.draft.kind||'poly';
-    project.floors[ui.draft.floor].shapes.push({id:nextId(),kind:kind,verts:v,name:(kind==='site'?'敷地':'区画'),edgeDims:[]}); }
+  const kind=ui.draft.kind||'poly';
+  const min = kind==='site' ? 2 : 3;                    // 敷地は1本線(2点)からOK／区画は閉じた3点以上
+  if(v.length>=min){ pushUndo();
+    const open = kind==='site' && !ui.draft.closed;     // 敷地で閉じてなければ「開いた線」（polyline）
+    project.floors[ui.draft.floor].shapes.push({id:nextId(),kind:kind,verts:v,name:(kind==='site'?'敷地':'区画'),edgeDims:[],open}); }
   ui.draft=null; render(); save();
 }
 
@@ -1119,7 +1122,7 @@ function updateProps(){
     body.appendChild(field('文字サイズ', o.size||13,'number',v=>{ pushUndo(); o.size=Math.max(6,+v||13); render(); save(); }));
   } else if(o.kind==='site'){ // 敷地線
     const info=document.createElement('div'); info.className='hint';
-    info.textContent='敷地外形線（概形・求積には含めません）'; body.appendChild(info);
+    info.textContent=(o.open?'敷地線（1本の線・概形':'敷地外形線（概形')+'・求積には含めません）'; body.appendChild(info);
   } else if('verts' in o){ // 図形
     body.appendChild(field('区画名', o.name||'区画','text',v=>{ pushUndo(); o.name=v; render(); save(); }));
     body.appendChild(presetChips(o));
@@ -1383,10 +1386,10 @@ function buildFloorSVG(floor, items){
   // 実寸スケール：用紙mm ＝ 実寸mm ÷ 縮尺（例 1/100）。これで定規で測っても合う図になる
   const pw=(bw+pad*2)/printScale, ph=(bh+pad*2)/printScale;
   let s=`<svg width="${round2(pw)}mm" height="${round2(ph)}mm" viewBox="${minx-pad} ${miny-pad} ${bw+pad*2} ${bh+pad*2}" preserveAspectRatio="xMidYMid meet" font-family="sans-serif">`;
-  // 敷地外形線
+  // 敷地線（閉じた外形＝polygon／1本など開いた線＝polyline）
   floor.shapes.filter(sh=>sh.kind==='site').forEach(sh=>{
     const pts=sh.verts.map(v=>`${v.x},${v.y}`).join(' ');
-    s+=`<polygon points="${pts}" fill="none" stroke="#1a1a1a" stroke-width="${lw}"/>`;
+    s+=`<${sh.open?'polyline':'polygon'} points="${pts}" fill="none" stroke="#1a1a1a" stroke-width="${lw}"/>`;
   });
   // 矩形を融合して1棟に：白塗り＋区画仕切り(点線=求積線)＋外周(太実線=躯体)
   const rb=floor.shapes.filter(sh=>sh.kind==='rect').map(rectBounds);
