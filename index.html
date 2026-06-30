@@ -90,6 +90,44 @@
   .bldsum{margin-top:6px; font-weight:700;}
   .bldsum b{color:var(--ink);}
 
+  /* 保存タグ */
+  #savetag{font-size:11px; color:var(--accent); opacity:0; transition:opacity .35s; white-space:nowrap; user-select:none;}
+  #savetag.show{opacity:1;}
+  #savetag.flash{opacity:1; transition:none;}
+
+  /* 案件オーバーレイ（汎用 .ov） */
+  .ov{position:fixed; inset:0; z-index:1100; background:rgba(20,24,25,.42); display:flex; align-items:center; justify-content:center;}
+  .ov.hidden{display:none;}
+  .ov-card{background:#fff; width:560px; max-width:92vw; max-height:86vh; border-radius:12px; overflow:hidden;
+    display:flex; flex-direction:column; box-shadow:0 18px 60px rgba(0,0,0,.3);}
+  .ov-bar{display:flex; align-items:center; gap:8px; padding:12px 16px; border-bottom:1px solid var(--line);}
+  .ov-bar b{font-size:14px;}
+  .ov-bar .spacer{flex:1;}
+  .ov-card button, .filebtn{padding:6px 11px; border:1px solid var(--line); background:#fff; border-radius:6px;
+    cursor:pointer; font-size:12.5px; color:var(--ink); white-space:nowrap;}
+  .ov-card button:hover, .filebtn:hover{border-color:var(--accent);}
+  .ov-card .go{background:var(--accent); color:#fff; border-color:var(--accent);}
+  .filebtn{display:inline-block;}
+  #pj-list{overflow:auto; padding:8px;}
+  .pj-row{display:flex; align-items:center; gap:8px; padding:9px 10px; border-radius:8px; border:1px solid transparent;}
+  .pj-row+.pj-row{border-top:1px solid #f0f2f2;}
+  .pj-row.cur{background:rgba(10,186,181,.07); border-color:rgba(10,186,181,.4);}
+  .pj-name{flex:1; min-width:0; border:1px solid transparent; background:transparent; font-size:13.5px; color:var(--ink);
+    padding:4px 6px; border-radius:5px;}
+  .pj-name:hover, .pj-name:focus{border-color:var(--line); background:#fff; outline:none;}
+  .pj-meta{font-size:11px; color:var(--muted); white-space:nowrap;}
+  .pj-cur-badge{font-size:10.5px; color:var(--accent); white-space:nowrap;}
+  .pj-row .mini{padding:4px 8px; font-size:12px;}
+  .pj-row .danger{color:#b3322a;}
+  .pj-empty{color:var(--muted); font-size:12.5px; padding:18px; text-align:center;}
+  /* 区画名プリセット */
+  .preset-wrap{margin:6px 0 2px;}
+  .preset-wrap .lbl{font-size:11px; color:var(--muted); margin-bottom:4px;}
+  .chips{display:flex; flex-wrap:wrap; gap:5px;}
+  .chip{padding:4px 9px; border:1px solid var(--line); background:#fff; border-radius:14px;
+    cursor:pointer; font-size:12px; color:var(--ink);}
+  .chip:hover{border-color:var(--accent); color:var(--accent);}
+
   #props{border-top:1px solid var(--line); margin-top:12px; padding-top:10px;}
   #props.hidden{display:none;}
   #statusbar{position:absolute; left:0; bottom:0; font-size:11px; color:var(--muted);
@@ -157,6 +195,10 @@
   <div id="topbar">
     <span class="title">現況図兼求積図</span>
     <span class="grp">
+      <button id="proj-btn" title="案件を保存・呼び出し">📁 案件</button>
+      <span id="savetag" title="自動保存されています">✓ 保存済み</span>
+    </span>
+    <span class="grp">
       <button id="undo-btn" title="戻る (⌘Z)">↩ 戻る</button>
       <button id="redo-btn" title="進む (⌘⇧Z)">↪ 進む</button>
     </span>
@@ -166,12 +208,14 @@
       <button id="zoom-fit">全体</button>
     </span>
     <span class="spacer"></span>
+    <label title="ペン＝作図／指＝ズーム・移動（iPad＋Apple Pencil向け）"><input type="checkbox" id="pen-mode"> ✏️ ペン</label>
     <label><input type="checkbox" id="show-grid" checked> 方眼</label>
     <label><input type="checkbox" id="show-dim" checked> 寸法</label>
     <label><input type="checkbox" id="show-table" checked> 求積表</label>
     <span class="grp">
       <button id="print-btn">印刷（A3/A4）</button>
       <button id="export-btn">SVG書き出し</button>
+      <button id="png-btn">PNG書き出し</button>
       <button id="clear-btn">全消去</button>
     </span>
   </div>
@@ -208,7 +252,7 @@ function newProject(){
     meta:{ title:'', address:'', date:'', scale_hint:'' },
     floors:[ newFloor('f1','1階'), newFloor('f2','2階') ],
     view:{ scale:30/910, tx:90, ty:80 },
-    settings:{ gridMod:910, gridDiv:1, showGrid:true, showDim:true, showTable:true }
+    settings:{ gridMod:910, gridDiv:1, showGrid:true, showDim:true, showTable:true, penMode:false }
   };
 }
 function newFloor(id,name){ return { id, name, shapes:[], symbols:[], effdims:[], texts:[] }; }
@@ -237,11 +281,12 @@ const SYMBOL_DEFS = {
 };
 
 /* ===== UI状態（モデルには含めない一時状態） ===== */
-const ui = { tool:'select', selId:null, activeFloor:0, pinching:false,
+const ui = { tool:'select', selId:null, activeFloor:0, pinching:false, penMode:false,
   pendingSymbol:null,            // シンボル配置待ちのキー
   draft:null,                    // 多角形の作図中 {floor, verts:[], cursor}
   lineDraft:null,                // ブロック塀 {floor, a}
-  effDraft:null };               // 有効寸法 {floor, a}
+  effDraft:null,                 // 有効寸法 {floor, a}
+  rectPending:null };            // 指タッチの矩形作成 保留 {floor, start}
 
 /* =========================================================================
    2. 幾何（座標法・スナップ・変換）
@@ -268,6 +313,83 @@ function centroid(verts){ let x=0,y=0; verts.forEach(v=>{x+=v.x;y+=v.y;}); retur
 function rectVerts(a,b){ const x1=Math.min(a.x,b.x),x2=Math.max(a.x,b.x),y1=Math.min(a.y,b.y),y2=Math.max(a.y,b.y);
   return [{x:x1,y:y1},{x:x2,y:y1},{x:x2,y:y2},{x:x1,y:y2}]; }
 
+/* ===== 矩形の自動融合（隣接・重なりを1棟に。外周＝躯体／内側＝求積線） =====
+   軸並行矩形のみ対象。全頂点のx/y座標で格子を作り、各セルがどの矩形に覆われるか判定。
+   ・セル境界で「覆い⇔非覆い」が切り替わる辺＝外周（躯体・実線）
+   ・両側とも覆い、かつ1つの矩形が両セルにまたがらない辺＝区画どうしの仕切り（求積線・点線）
+   （重なり部のように同じ矩形が両セルをまたぐ内部辺は線を引かない＝1つの塊に見える）           */
+function rectBounds(s){ const xs=s.verts.map(v=>v.x), ys=s.verts.map(v=>v.y);
+  return {x1:Math.min(...xs),x2:Math.max(...xs),y1:Math.min(...ys),y2:Math.max(...ys)}; }
+// 軸並行の矩形か（4頂点・x2種y2種・4隅がそろう）。kind欠落の旧データ判定に使う
+function isAxisRect(v){ if(!Array.isArray(v)||v.length!==4) return false;
+  const xs=[...new Set(v.map(p=>p.x))], ys=[...new Set(v.map(p=>p.y))];
+  if(xs.length!==2||ys.length!==2) return false;
+  return new Set(v.map(p=>p.x+','+p.y)).size===4; }
+function uniqSorted(a){ return [...new Set(a)].sort((p,q)=>p-q); }
+function unionRects(rb){
+  const out={outline:[],partitions:[]};
+  if(!rb.length) return out;
+  const xs=uniqSorted(rb.flatMap(r=>[r.x1,r.x2])), ys=uniqSorted(rb.flatMap(r=>[r.y1,r.y2]));
+  const nx=xs.length-1, ny=ys.length-1;
+  const cov=[];                       // cov[i][j] = そのセルを覆う矩形の配列
+  for(let i=0;i<nx;i++){ cov[i]=[]; const cx=(xs[i]+xs[i+1])/2;
+    for(let j=0;j<ny;j++){ const cy=(ys[j]+ys[j+1])/2;
+      cov[i][j]=rb.filter(r=>cx>r.x1&&cx<r.x2&&cy>r.y1&&cy<r.y2); } }
+  const has=(i,j)=> i>=0&&i<nx&&j>=0&&j<ny&&cov[i][j].length>0;
+  const span=(a,b)=> a.some(r=>b.includes(r));   // 1つの矩形が両セルにまたがるか
+  // 縦の辺（x=xs[i]）：左セル(i-1,j)と右セル(i,j)を比較
+  for(let i=0;i<=nx;i++) for(let j=0;j<ny;j++){
+    const L=has(i-1,j), R=has(i,j), seg={x1:xs[i],y1:ys[j],x2:xs[i],y2:ys[j+1]};
+    if(L!==R) out.outline.push(seg);
+    else if(L&&R && !span(cov[i-1][j],cov[i][j])) out.partitions.push(seg);
+  }
+  // 横の辺（y=ys[j]）：上セル(i,j-1)と下セル(i,j)を比較
+  for(let j=0;j<=ny;j++) for(let i=0;i<nx;i++){
+    const A=has(i,j-1), B=has(i,j), seg={x1:xs[i],y1:ys[j],x2:xs[i+1],y2:ys[j]};
+    if(A!==B) out.outline.push(seg);
+    else if(A&&B && !span(cov[i][j-1],cov[i][j])) out.partitions.push(seg);
+  }
+  return out;
+}
+// 単位セル辺を同一直線上で連結（点線が途切れず・要素数も削減）
+function mergeSegs(segs){
+  const groups=new Map();
+  const push=(t,k,a,b)=>{ const key=t+':'+k; if(!groups.has(key))groups.set(key,{t,k,iv:[]});
+    groups.get(key).iv.push([Math.min(a,b),Math.max(a,b)]); };
+  segs.forEach(s=>{ if(s.x1===s.x2) push('V',s.x1,s.y1,s.y2); else push('H',s.y1,s.x1,s.x2); });
+  const res=[];
+  for(const g of groups.values()){ g.iv.sort((p,q)=>p[0]-q[0]); const m=[];
+    for(const [a,b] of g.iv){ const last=m[m.length-1];
+      if(last && a<=last[1]+1e-6) last[1]=Math.max(last[1],b); else m.push([a,b]); }
+    m.forEach(([a,b])=> res.push(g.t==='V'?{x1:g.k,y1:a,x2:g.k,y2:b}:{x1:a,y1:g.k,x2:b,y2:g.k}));
+  }
+  return res;
+}
+// 階の求積合計(m²)：各区画を「行に出す丸め済み面積」で合算（内訳の積み上げ＝計が必ず一致）。敷地線は含めない
+function floorSumM2(floor){
+  let a=0; ((floor&&floor.shapes)||[]).forEach(s=>{ if(s.kind!=='site'&&Array.isArray(s.verts)) a+=round2(m2(areaMm2(s.verts))); });
+  return a;
+}
+// 重なり検知（矩形・多角形すべて対応）。辺の真の交差か、片方の頂点が他方の内部にあれば重なり。接触（辺共有）は重なり扱いにしない
+function pointInPoly(pt,vs){ let inside=false;
+  for(let i=0,j=vs.length-1;i<vs.length;j=i++){ const a=vs[i],b=vs[j];
+    if(((a.y>pt.y)!==(b.y>pt.y)) && (pt.x < (b.x-a.x)*(pt.y-a.y)/((b.y-a.y)||1e-9)+a.x)) inside=!inside; }
+  return inside; }
+function segProperInt(p1,p2,p3,p4){
+  const d=(a,b,c)=>(b.x-a.x)*(c.y-a.y)-(b.y-a.y)*(c.x-a.x);
+  const d1=d(p3,p4,p1),d2=d(p3,p4,p2),d3=d(p1,p2,p3),d4=d(p1,p2,p4);
+  return ((d1>0&&d2<0)||(d1<0&&d2>0)) && ((d3>0&&d4<0)||(d3<0&&d4>0)); }
+function polysOverlap(A,B){
+  const bb=v=>{const xs=v.map(p=>p.x),ys=v.map(p=>p.y);return{x1:Math.min(...xs),x2:Math.max(...xs),y1:Math.min(...ys),y2:Math.max(...ys)};};
+  const a=bb(A),b=bb(B); if(a.x2<=b.x1||b.x2<=a.x1||a.y2<=b.y1||b.y2<=a.y1) return false;
+  for(let i=0;i<A.length;i++){ const a1=A[i],a2=A[(i+1)%A.length];
+    for(let j=0;j<B.length;j++){ const b1=B[j],b2=B[(j+1)%B.length]; if(segProperInt(a1,a2,b1,b2)) return true; } }
+  return A.some(p=>pointInPoly(p,B)) || B.some(p=>pointInPoly(p,A)); }
+function floorHasOverlap(floor){
+  const sh=((floor&&floor.shapes)||[]).filter(s=>s.kind!=='site'&&Array.isArray(s.verts)&&s.verts.length>=3);
+  for(let i=0;i<sh.length;i++) for(let j=i+1;j<sh.length;j++){ if(polysOverlap(sh[i].verts,sh[j].verts)) return true; }
+  return false; }
+
 /* =========================================================================
    3. SVG小道具
    ========================================================================= */
@@ -292,16 +414,188 @@ function redo(){ if(!redoStack.length)return; undoStack.push(floorsJSON()); appl
 function refreshUndoButtons(){ document.getElementById('undo-btn').disabled=!undoStack.length;
   document.getElementById('redo-btn').disabled=!redoStack.length; }
 
-/* ===== localStorage 自動保存（作業継続用） ===== */
-const LS_KEY='kyuseki_v1';
-function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(project)); }catch(e){} }
-function load(){ try{ const s=localStorage.getItem(LS_KEY); if(!s)return false;
-  const p=JSON.parse(s); if(!p||!p.floors)return false;
-  project=p; Object.assign(view, p.view||{}); Object.assign(settings, p.settings||{});
-  // uid を既存最大+1へ
-  let mx=0; const scan=a=>a.forEach(o=>{const n=+String(o.id).replace(/\D/g,''); if(n>mx)mx=n;});
-  p.floors.forEach(f=>{scan(f.shapes);scan(f.symbols);scan(f.effdims);}); uid=mx+1;
-  return true; }catch(e){ return false; } }
+/* ===== localStorage 自動保存：複数案件ストア =====
+   STORE_KEY={currentId, projects:[{id,name,savedAt,data}]} 形式で複数現場を保持。
+   旧1枠(kyuseki_v1)は初回ロード時に1案件へ自動移行。                               */
+const STORE_KEY='kyuseki_store_v1', OLD_KEY='kyuseki_v1';
+let currentId=null;
+function readStore(){ try{ const s=localStorage.getItem(STORE_KEY); const o=s&&JSON.parse(s);
+  return (o&&Array.isArray(o.projects))?o:null; }catch(e){ return null; } }
+function writeStore(st){ try{ localStorage.setItem(STORE_KEY, JSON.stringify(st)); return true; }catch(e){ return false; } }
+function writeStoreOrWarn(st){ const okk=writeStore(st); if(!okk) warnSaveFailed(); return okk; }   // 案件操作の保存失敗も可視化（サイレント喪失を防ぐ）
+function genId(){ return 'p'+Date.now().toString(36)+Math.floor(Math.random()*1e4).toString(36); }
+function projName(){ return (project.meta&&project.meta.title||'').trim()||'無題の案件'; }
+
+// floors/shapes を正規化（旧データ・他端末バックアップに欠けたプロパティを後埋めし、render例外＝白画面を防ぐ）
+function normalizeFloors(data){
+  if(!data || !Array.isArray(data.floors) || !data.floors.length){
+    data.floors=[ newFloor('f1','1階'), newFloor('f2','2階') ];
+  }
+  data.floors.forEach((f,i)=>{
+    f.id=f.id||('f'+(i+1)); f.name=f.name||((i+1)+'階');
+    f.shapes=Array.isArray(f.shapes)?f.shapes:[];
+    f.symbols=Array.isArray(f.symbols)?f.symbols:[];
+    f.effdims=Array.isArray(f.effdims)?f.effdims:[];
+    f.texts=Array.isArray(f.texts)?f.texts:[];
+    // 不正な図形を除去しつつ edgeDims を後埋め。kind欠落は軸並行4頂点ならrect推定（融合・重なり検知を有効に保つ）
+    f.shapes=f.shapes.filter(s=>s&&Array.isArray(s.verts)&&s.verts.length>=2);
+    f.shapes.forEach(s=>{ if(!Array.isArray(s.edgeDims)) s.edgeDims=[]; if(!s.kind) s.kind=isAxisRect(s.verts)?'rect':'poly'; });
+  });
+  return data;
+}
+
+// project を data に差し替え（const view/settings の実体は保ったまま中身を更新）
+function setProject(data){
+  data=normalizeFloors(data||{});
+  project=data;
+  project.meta=project.meta||{title:'',address:'',date:'',scale_hint:''};
+  Object.assign(view, {scale:30/910,tx:90,ty:80}, data.view||{}); project.view=view;
+  Object.assign(settings, {gridMod:910,gridDiv:1,showGrid:true,showDim:true,showTable:true,penMode:false}, data.settings||{}); project.settings=settings;
+  let mx=0; const scan=a=>(a||[]).forEach(o=>{const n=+String(o.id).replace(/\D/g,''); if(n>mx)mx=n;});
+  project.floors.forEach(f=>{scan(f.shapes);scan(f.symbols);scan(f.effdims);scan(f.texts);}); uid=mx+1;
+  ui.selId=null; ui.draft=null; ui.lineDraft=null; ui.effDraft=null;
+  undoStack.length=0; redoStack.length=0;
+}
+
+let saveFailed=false;
+function save(){
+  const st=readStore()||{currentId:null,projects:[]};
+  if(!currentId) currentId=genId();
+  st.currentId=currentId;
+  const rec={id:currentId, name:projName(), savedAt:Date.now(), data:project};
+  const i=st.projects.findIndex(p=>p.id===currentId);
+  if(i>=0) st.projects[i]=rec; else st.projects.push(rec);
+  if(writeStore(st)){ flashSaved(); if(saveFailed){ saveFailed=false; } }
+  else { warnSaveFailed(); }
+}
+// 保存失敗（localStorage上限・プライベートブラウズ等）を可視化。データ喪失の単一障害点に手動FB（バックアップ書出）を促す
+function warnSaveFailed(){
+  const t=document.getElementById('savetag');
+  if(t){ t.textContent='⚠ 保存できません'; t.classList.add('show','flash'); t.style.color='#b3322a'; }
+  if(!saveFailed){ saveFailed=true;
+    alert('保存できませんでした。\n端末の保存容量が不足しているか、プライベートブラウズの可能性があります。\n\n「📁案件 → バックアップ書き出し」でデータをファイルに退避してください。'); }
+}
+function load(){
+  const st=readStore();
+  if(st && st.projects.length){
+    currentId = (st.currentId && st.projects.some(p=>p.id===st.currentId)) ? st.currentId : st.projects[0].id;
+    setProject(st.projects.find(p=>p.id===currentId).data);
+    return true;
+  }
+  // 旧1枠からの移行
+  try{ const old=localStorage.getItem(OLD_KEY);
+    if(old){ const p=JSON.parse(old); if(p&&p.floors){ currentId=genId(); setProject(p); save(); return true; } } }catch(e){}
+  return false;
+}
+
+/* ===== 案件操作 ===== */
+function newProjectSlot(){ pushHistoryNone(); currentId=genId(); setProject(newProject()); save(); render(); renderProjList(); }
+function openProjectSlot(id){ const st=readStore(); if(!st)return; const r=st.projects.find(p=>p.id===id); if(!r)return;
+  currentId=id; st.currentId=id; writeStoreOrWarn(st); setProject(r.data); render(); renderProjList(); closeProjPanel(); }
+function duplicateProjectSlot(id){ const st=readStore(); if(!st)return; const r=st.projects.find(p=>p.id===id); if(!r)return;
+  const copy=JSON.parse(JSON.stringify(r.data)); copy.meta=copy.meta||{}; copy.meta.title=(r.name||'無題の案件')+'（コピー）';
+  currentId=genId(); setProject(copy); save(); render(); renderProjList(); }
+function deleteProjectSlot(id){ const st=readStore(); if(!st)return; const r=st.projects.find(p=>p.id===id); if(!r)return;
+  if(!confirm('「'+(r.name||'無題の案件')+'」を削除します。元に戻せません。よろしいですか？')) return;
+  st.projects=st.projects.filter(p=>p.id!==id); writeStoreOrWarn(st);
+  if(id===currentId){ if(st.projects.length){ openProjectSlot(st.projects[0].id); } else { newProjectSlot(); } }
+  renderProjList(); }
+function renameProjectSlot(id,name){ const st=readStore(); if(!st)return; const r=st.projects.find(p=>p.id===id); if(!r)return;
+  r.name=name.trim()||'無題の案件'; r.savedAt=Date.now();
+  if(id===currentId){ project.meta=project.meta||{}; project.meta.title=r.name; }
+  writeStoreOrWarn(st); }
+function pushHistoryNone(){}   // 案件切替時はUndo履歴をまたがない（setProjectでクリア）
+
+/* ===== バックアップ（全案件をJSONで書出/読込） ===== */
+function exportBackup(){
+  save(); const st=readStore()||{currentId,projects:[]};
+  const blob=new Blob([JSON.stringify(st,null,1)],{type:'application/json'});
+  const d=new Date(), p=n=>String(n).padStart(2,'0');
+  const fn=`genkyo-backup-${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}.json`;
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=fn; a.click();
+}
+// バックアップJSONをストアにマージ（IDは衝突したら振り直し）。戻り値=追加件数 / -1(不正) / -2(保存失敗)
+function mergeIntoStore(inc){
+  const incProjects = Array.isArray(inc&&inc.projects)?inc.projects
+    : (inc&&inc.floors?[{id:genId(),name:(inc.meta&&inc.meta.title)||'読込案件',savedAt:Date.now(),data:inc}]:null);
+  if(!incProjects||!incProjects.length) return -1;
+  const st=readStore()||{currentId:null,projects:[]};
+  const have=new Set(st.projects.map(p=>p.id)); let added=0;
+  incProjects.forEach(p=>{ let id=p.id||genId(); while(have.has(id)) id=genId(); have.add(id);
+    // 取込元を破壊しないようディープコピーしてから修復（id/name等の混入も防ぐ）
+    const raw = p.data ? p.data : (p.floors ? {meta:p.meta,floors:p.floors,view:p.view,settings:p.settings} : {});
+    const data=normalizeFloors(JSON.parse(JSON.stringify(raw)));
+    st.projects.push({id, name:p.name||'読込案件', savedAt:p.savedAt||Date.now(), data}); added++; });
+  if(!writeStore(st)){ warnSaveFailed(); return -2; }
+  return added;
+}
+function importBackup(file){
+  const rd=new FileReader();
+  rd.onload=()=>{ try{
+    const added=mergeIntoStore(JSON.parse(rd.result));
+    if(added===-2){ renderProjList(); return; }   // 保存失敗は warnSaveFailed で通知済み
+    if(added<0){ alert('このファイルには案件データが見つかりませんでした。'); return; }
+    renderProjList(); alert(added+'件の案件を読み込みました。');
+  }catch(e){ alert('読み込みに失敗しました：'+e.message); } };
+  rd.readAsText(file);
+}
+
+/* ===== 保存タグの点滅（自動保存された安心表示） ===== */
+let saveTagTimer=null;
+function flashSaved(){
+  const t=document.getElementById('savetag'); if(!t)return;
+  t.style.color=''; t.textContent='✓ 保存しました'; t.classList.add('flash'); t.classList.add('show');
+  clearTimeout(saveTagTimer);
+  saveTagTimer=setTimeout(()=>{ t.classList.remove('flash'); t.textContent='✓ 保存済み'; t.classList.remove('show'); }, 1400);
+}
+
+/* ===== 案件パネル（保存・呼び出し・複製・削除・バックアップ） ===== */
+function ensureProjDOM(){
+  if(document.getElementById('projview')) return;
+  const v=document.createElement('div'); v.id='projview'; v.className='ov hidden';
+  v.innerHTML=`<div class="ov-card">
+    <div class="ov-bar">
+      <b>📁 案件</b>
+      <button id="pj-new" class="go">＋ 新規</button>
+      <span class="spacer"></span>
+      <button id="pj-export">⬇ バックアップ書き出し</button>
+      <label class="filebtn">⬆ 読み込み<input type="file" id="pj-import" accept="application/json,.json" hidden></label>
+      <button id="pj-close">閉じる</button>
+    </div>
+    <div id="pj-list"></div>
+  </div>`;
+  document.body.appendChild(v);
+  v.addEventListener('click',e=>{ if(e.target===v) closeProjPanel(); });
+  document.getElementById('pj-close').onclick=closeProjPanel;
+  document.getElementById('pj-new').onclick=()=>{ newProjectSlot(); };
+  document.getElementById('pj-export').onclick=exportBackup;
+  document.getElementById('pj-import').onchange=e=>{ const f=e.target.files[0]; if(f) importBackup(f); e.target.value=''; };
+}
+function fmtDate(ts){ const d=new Date(ts), p=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}/${p(d.getMonth()+1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; }
+function projArea(data){ let a=0; (data.floors||[]).forEach(f=>{ try{ a+=floorSumM2(f); }catch(e){} }); return a; }
+function renderProjList(){
+  const box=document.getElementById('pj-list'); if(!box)return;
+  const st=readStore()||{currentId,projects:[]};
+  const list=[...st.projects].sort((a,b)=>b.savedAt-a.savedAt);
+  if(!list.length){ box.innerHTML='<div class="pj-empty">案件がありません。「＋新規」で始めてください。</div>'; return; }
+  box.innerHTML='';
+  list.forEach(p=>{
+    const row=document.createElement('div'); row.className='pj-row'+(p.id===currentId?' cur':'');
+    const name=document.createElement('input'); name.className='pj-name'; name.value=p.name||'無題の案件';
+    name.onchange=()=>{ renameProjectSlot(p.id, name.value); renderProjList(); };
+    const meta=document.createElement('span'); meta.className='pj-meta';
+    meta.textContent=`${fmt2(projArea(p.data))}㎡ ・ ${fmtDate(p.savedAt)}`;
+    row.appendChild(name); row.appendChild(meta);
+    if(p.id===currentId){ const b=document.createElement('span'); b.className='pj-cur-badge'; b.textContent='編集中'; row.appendChild(b); }
+    else { const open=document.createElement('button'); open.className='mini'; open.textContent='開く'; open.onclick=()=>openProjectSlot(p.id); row.appendChild(open); }
+    const dup=document.createElement('button'); dup.className='mini'; dup.textContent='複製'; dup.onclick=()=>duplicateProjectSlot(p.id); row.appendChild(dup);
+    const del=document.createElement('button'); del.className='mini danger'; del.textContent='削除'; del.onclick=()=>deleteProjectSlot(p.id); row.appendChild(del);
+    box.appendChild(row);
+  });
+}
+function openProjPanel(){ save(); ensureProjDOM(); renderProjList(); document.getElementById('projview').classList.remove('hidden'); }
+function closeProjPanel(){ const v=document.getElementById('projview'); if(v)v.classList.add('hidden'); }
 
 /* =========================================================================
    5. ペイン / レンダリング
@@ -332,8 +626,10 @@ function drawPane(pane){
 
   if(settings.showGrid) drawGrid(svg,W,H);
 
-  // 図形
+  // 図形（矩形は塗りのみ→輪郭は躯体レイヤーが描く）
   floor.shapes.forEach(s=>drawShape(svg,pane,s));
+  // 躯体レイヤー：隣接矩形を融合した外周（実線）＋区画仕切り（点線の求積線）
+  drawKutai(svg,floor);
   // 有効寸法
   if(settings.showDim) floor.effdims.forEach(d=>drawEffDim(svg,pane,d));
   // シンボル
@@ -363,6 +659,17 @@ function drawGrid(svg,W,H){
   }
 }
 
+// 躯体レイヤー：その階の矩形を融合し、外周＝実線／内側の仕切り＝点線（求積線）で描く
+function drawKutai(svg,floor){
+  const rb=floor.shapes.filter(s=>s.kind==='rect').map(rectBounds);
+  if(rb.length<1) return;
+  const u=unionRects(rb);
+  mergeSegs(u.partitions).forEach(g=>
+    svg.appendChild(line(sx(g.x1),sy(g.y1),sx(g.x2),sy(g.y2),COL.muted,1,{'stroke-dasharray':'5 4'})));
+  mergeSegs(u.outline).forEach(g=>
+    svg.appendChild(line(sx(g.x1),sy(g.y1),sx(g.x2),sy(g.y2),COL.ink,2,{'stroke-linecap':'square'})));
+}
+
 function drawShape(svg,pane,s){
   const sel = ui.selId===s.id;
   // 敷地線：細い黒の外形線のみ（塗り・面積・名前は出さない／求積に入れない）
@@ -381,9 +688,10 @@ function drawShape(svg,pane,s){
     return;
   }
   const pts = s.verts.map(v=>`${sx(v.x)},${sy(v.y)}`).join(' ');
-  const poly = el('polygon',{ points:pts, fill:COL.fill, stroke:COL.ink, 'stroke-width':sel?2.4:1.5,
+  // 矩形は輪郭を躯体レイヤーに委譲（塗りのみ）。選択中だけ枠を見せる。多角形(三斜)は自前の輪郭を残す。
+  const baseStroke = s.kind==='rect' ? 'none' : COL.ink;
+  const poly = el('polygon',{ points:pts, fill:COL.fill, stroke:sel?COL.sel:baseStroke, 'stroke-width':sel?2.4:1.5,
     'stroke-linejoin':'round' });
-  if(sel) poly.setAttribute('stroke',COL.sel);
   poly.style.cursor='move';
   svg.appendChild(poly);
 
@@ -425,7 +733,12 @@ function drawShape(svg,pane,s){
       h.addEventListener('pointerdown',e=>{ e.stopPropagation(); pushUndo();
         const opp = s.kind==='rect' ? s.verts[(i+2)%4] : null;
         drag(pane.svg,(p)=>{ const sp={x:snap(p.x),y:snap(p.y)};
-          if(s.kind==='rect'){ s.verts=rectVerts(opp,sp); }
+          if(s.kind==='rect'){
+            // 対角点と重なって0面積に潰れるのを防ぐ（作成時と同じガード）
+            if(sp.x===opp.x) sp.x=opp.x+(sp.x>=opp.x?snapStep():-snapStep());
+            if(sp.y===opp.y) sp.y=opp.y+(sp.y>=opp.y?snapStep():-snapStep());
+            s.verts=rectVerts(opp,sp);
+          }
           else { s.verts[i]={x:sp.x,y:sp.y}; }
           render(); }); });
       svg.appendChild(h);
@@ -540,11 +853,12 @@ function drawText(svg,pane,t){
     drag(pane.svg,p=>{ t.x=o.x+snap(p.x-start.x); t.y=o.y+snap(p.y-start.y); render(); }); });
 }
 
-/* ===== 汎用ドラッグ ===== */
-function drag(svg,onMove){
+/* ===== 汎用ドラッグ（onEnd 省略可） ===== */
+function drag(svg,onMove,onEnd){
   function mv(ev){ if(ui.pinching)return; onMove(paneMm(svg,ev)); }
-  function up(){ document.removeEventListener('pointermove',mv); document.removeEventListener('pointerup',up); save(); }
+  function up(){ document.removeEventListener('pointermove',mv); document.removeEventListener('pointerup',up); document.removeEventListener('pointercancel',up); save(); if(onEnd)onEnd(); }
   document.addEventListener('pointermove',mv); document.addEventListener('pointerup',up);
+  document.addEventListener('pointercancel',up);   // iPadのパーム/ジェスチャ奪取でcancelが飛んでも後始末する（固着防止）
 }
 
 /* =========================================================================
@@ -567,6 +881,12 @@ panes.forEach(pane=>{
   const svg=pane.svg;
   svg.addEventListener('pointerdown',e=>{
     if(e.button!==0)return;
+    if(ui.pinching) return;                                   // ピンチ中は作図/移動しない
+    // 2本目以降の指は確定させない（＝ピンチの始まり。幽霊図形を断つ）。
+    // ピンチのcaptureリスナが先に発火し現在の指もallTouchに入るため、しきい値は2本（自分以外に1本）。
+    if(e.pointerType==='touch' && allTouch.size>=2) return;
+    // ペンモード：指は作図しない（パン/ズーム専用）。ペン/マウスのみ作図。選択ツールの指パンは許可
+    if(settings.penMode && e.pointerType==='touch' && (ui.pendingSymbol || ui.tool!=='select')) return;
     ui.activeFloor=pane.floor;
     const sp=paneMmSnap(svg,e);
 
@@ -605,13 +925,11 @@ panes.forEach(pane=>{
 
     // 矩形：ドラッグで作成
     if(ui.tool==='rect'){
-      pushUndo(); const f=project.floors[pane.floor];
-      const s={id:nextId(),kind:'rect',verts:rectVerts(sp,{x:sp.x+settings.gridMod,y:sp.y+settings.gridMod}),name:'区画',edgeDims:[]};
-      f.shapes.push(s); ui.selId=s.id; const start=sp;
-      drag(svg,p=>{ const cur={x:snap(p.x),y:snap(p.y)};
-        if(cur.x===start.x)cur.x=start.x+snapStep(); if(cur.y===start.y)cur.y=start.y+snapStep();
-        s.verts=rectVerts(start,cur); render(); });
-      render(); return;
+      // 指の場合は即作成せず保留（2本目が触れたらピンチと判断し作成を取消＝幽霊矩形を防ぐ）。
+      // 実際の作成は pointermove（ドラッグ開始）か pointerup（タップ）で確定する。
+      if(e.pointerType==='touch'){ ui.rectPending={floor:pane.floor, start:sp}; return; }
+      makeRectDrag(pane, sp);   // ペン/マウスは従来どおり即作成＋リサイズドラッグ
+      return;
     }
 
     // 有効寸法：2点
@@ -626,13 +944,28 @@ panes.forEach(pane=>{
     if(ui.tool==='select'){ ui.selId=null; startPan(svg,e); render(); }
   });
 
-  // カーソル追従（プレビュー）
+  // カーソル追従（プレビュー）＋ 指タッチの矩形：動いたらドラッグ作成へ確定
   svg.addEventListener('pointermove',e=>{
+    if(ui.rectPending && ui.tool==='rect' && ui.rectPending.floor===pane.floor && !ui.pinching){
+      const sp2=paneMmSnap(svg,e);
+      if(sp2.x!==ui.rectPending.start.x || sp2.y!==ui.rectPending.start.y){
+        const start=ui.rectPending.start; ui.rectPending=null; makeRectDrag(pane, start); return;
+      }
+    }
     const sp=paneMmSnap(svg,e);
     if(ui.draft && ui.draft.floor===pane.floor){ ui.draft.cursor=sp; drawPane(pane); }
     else if(ui.lineDraft && ui.lineDraft.floor===pane.floor){ ui.lineDraft.cursor=sp; drawPane(pane); }
     else if(ui.effDraft && ui.effDraft.floor===pane.floor){ ui.effDraft.cursor=sp; drawPane(pane); }
   });
+
+  // 指タッチの矩形：動かさず離した（タップ）＝既定サイズで配置
+  svg.addEventListener('pointerup',e=>{
+    if(ui.rectPending && ui.tool==='rect' && ui.rectPending.floor===pane.floor && !ui.pinching && e.pointerType==='touch'){
+      const start=ui.rectPending.start; ui.rectPending=null; makeRectTap(pane, start);
+    }
+  });
+  // 指のキャンセル（パーム/ジェスチャ奪取）では保留矩形は作らず破棄＝幽霊矩形を断つ
+  svg.addEventListener('pointercancel',()=>{ ui.rectPending=null; });
 
   // 右クリックで多角形を閉じる
   svg.addEventListener('contextmenu',e=>{ if(ui.draft){ e.preventDefault(); finalizePoly(); } });
@@ -642,6 +975,23 @@ panes.forEach(pane=>{
     const r=svg.getBoundingClientRect(); const mx=e.clientX-r.left, my=e.clientY-r.top;
     const f=e.deltaY<0?1.1:1/1.1; zoomAt(mx,my,f); },{passive:false});
 });
+
+// 矩形作成：ドラッグ版（ペン/マウス、指のドラッグ）。作成後は自動で選択ツールへ戻しすぐ名前を付けられる
+function makeRectDrag(pane, start){
+  const svg=pane.svg; pushUndo(); const f=project.floors[pane.floor];
+  const s={id:nextId(),kind:'rect',verts:rectVerts(start,{x:start.x+settings.gridMod,y:start.y+settings.gridMod}),name:'区画',edgeDims:[]};
+  f.shapes.push(s); ui.selId=s.id;
+  drag(svg,p=>{ const cur={x:snap(p.x),y:snap(p.y)};
+    if(cur.x===start.x)cur.x=start.x+snapStep(); if(cur.y===start.y)cur.y=start.y+snapStep();
+    s.verts=rectVerts(start,cur); render(); }, ()=>{ setTool('select'); ui.selId=s.id; render(); });
+  render();
+}
+// 矩形作成：タップ版（指で動かさず置く）＝既定サイズ。同じく選択ツールへ
+function makeRectTap(pane, start){
+  pushUndo(); const f=project.floors[pane.floor];
+  const s={id:nextId(),kind:'rect',verts:rectVerts(start,{x:start.x+settings.gridMod,y:start.y+settings.gridMod}),name:'区画',edgeDims:[]};
+  f.shapes.push(s); ui.selId=s.id; setTool('select'); ui.selId=s.id; render(); save();
+}
 
 function finalizePoly(){
   if(!ui.draft)return; let v=ui.draft.verts.slice();
@@ -657,9 +1007,10 @@ function zoomAt(px,py,f){ const mx=mmX(px),my=mmY(py);
   view.scale*=f; view.tx=px-mx*view.scale; view.ty=py-my*view.scale; render(); save(); }
 function startPan(svg,e){ const r=svg.getBoundingClientRect();
   const ox=view.tx,oy=view.ty,sx0=e.clientX,sy0=e.clientY; let moved=false;
-  function mv(ev){ moved=true; view.tx=ox+(ev.clientX-sx0); view.ty=oy+(ev.clientY-sy0); render(); }
-  function up(){ document.removeEventListener('pointermove',mv); document.removeEventListener('pointerup',up); if(moved)save(); }
+  function mv(ev){ if(ui.pinching)return; moved=true; view.tx=ox+(ev.clientX-sx0); view.ty=oy+(ev.clientY-sy0); render(); }
+  function up(){ document.removeEventListener('pointermove',mv); document.removeEventListener('pointerup',up); document.removeEventListener('pointercancel',up); if(moved)save(); }
   document.addEventListener('pointermove',mv); document.addEventListener('pointerup',up);
+  document.addEventListener('pointercancel',up);   // cancelでもパンを終了（固着防止）
 }
 function fitView(){
   let minx=Infinity,miny=Infinity,maxx=-Infinity,maxy=-Infinity,any=false;
@@ -686,17 +1037,19 @@ function renderTables(){
   const panel=document.getElementById('tablepanel');
   panel.classList.toggle('collapsed', !settings.showTable);
   if(!settings.showTable){ panel.innerHTML=''; return; }
-  let total=0; let html='<div class="qtables">';
+  let total=0; let html='<div class="qtables">'; let anyOverlap=false;
   project.floors.forEach(f=>{
-    let sum=0;
     const qs=f.shapes.filter(s=>s.kind!=='site');   // 敷地線は求積に含めない
-    let rows=qs.map(s=>{ const a=m2(areaMm2(s.verts)); sum+=a;
+    let rows=qs.map(s=>{ const a=m2(areaMm2(s.verts));
       return `<tr><td>${esc(s.name||'区画')}</td><td class="num">${fmt2(a)}</td></tr>`; }).join('');
     if(!qs.length) rows=`<tr><td colspan="2" style="color:#aaa">（区画なし）</td></tr>`;
+    const sum=floorSumM2(f);                          // 計＝各区画(丸め済み)の合算＝内訳の積み上げと必ず一致
+    const overlap=floorHasOverlap(f); if(overlap) anyOverlap=true;
     total+=sum;
     html+=`<div class="qt"><h3>${esc(f.name)} 求積表</h3><table class="area">
       <tr><th>区画名</th><th class="num">面積(m²)</th></tr>${rows}
-      <tr class="sum"><td>${esc(f.name)} 計</td><td class="num">${fmt2(sum)}</td></tr></table></div>`;
+      <tr class="sum"><td>${esc(f.name)} 計</td><td class="num">${fmt2(sum)}</td></tr></table>`
+      +(overlap?`<div style="color:#b3322a;font-size:11px;margin-top:2px">※区画が重なっています。重ねず隣り合わせに直してください（重なり分は二重に数えられます）</div>`:'')+`</div>`;
   });
   html+='</div>';
   html+=`<div class="bldsum">建物合計（1F＋2F）：<b>${fmt2(total)} m²</b></div>`;
@@ -722,6 +1075,7 @@ function updateProps(){
     info.textContent='敷地外形線（概形・求積には含めません）'; body.appendChild(info);
   } else if('verts' in o){ // 図形
     body.appendChild(field('区画名', o.name||'区画','text',v=>{ pushUndo(); o.name=v; render(); save(); }));
+    body.appendChild(presetChips(o));
     if(o.kind==='rect'){
       const w=Math.abs(o.verts[1].x-o.verts[0].x), d=Math.abs(o.verts[3].y-o.verts[0].y);
       body.appendChild(field2('幅(mm)',Math.round(w),'奥行(mm)',Math.round(d),
@@ -767,16 +1121,25 @@ function field2(l1,v1,l2,v2,c1,c2){
     const i=document.createElement('input'); i.type='number'; i.value=val; i.onchange=()=>cb(i.value); d.appendChild(i); return d; };
   r.appendChild(mk(l1,v1,c1)); r.appendChild(mk(l2,v2,c2)); wrap.appendChild(r); return wrap;
 }
+const NAME_PRESETS=['居室','和室','洋室','台所','ＤＫ','廊下','玄関','便所','浴室','洗面所','納戸','床の間','押入','階段','物置','車庫','店舗','事務所'];
+function presetChips(o){
+  const wrap=document.createElement('div'); wrap.className='preset-wrap';
+  const lbl=document.createElement('div'); lbl.className='lbl'; lbl.textContent='区画名（タップで入力）'; wrap.appendChild(lbl);
+  const row=document.createElement('div'); row.className='chips';
+  NAME_PRESETS.forEach(nm=>{ const c=document.createElement('button'); c.className='chip'; c.type='button'; c.textContent=nm;
+    c.onclick=()=>{ pushUndo(); o.name=nm; render(); save(); }; row.appendChild(c); });
+  wrap.appendChild(row); return wrap;
+}
 
 /* =========================================================================
    10. ツールバー / パレット 配線
    ========================================================================= */
-function setTool(t){ ui.tool=t; ui.pendingSymbol=null; ui.draft=null; ui.lineDraft=null; ui.effDraft=null;
+function setTool(t){ ui.tool=t; ui.pendingSymbol=null; ui.draft=null; ui.lineDraft=null; ui.effDraft=null; ui.rectPending=null;
   document.querySelectorAll('#palette [data-tool]').forEach(b=>b.classList.toggle('active',b.dataset.tool===t));
   document.querySelectorAll('#symbol-pal .tool-btn').forEach(b=>b.classList.remove('active'));
   panes.forEach(p=>p.svg.style.cursor = t==='select'?'default':'crosshair');
   render(); }
-function setSymbol(key){ ui.pendingSymbol=key; ui.tool='select'; ui.draft=null; ui.effDraft=null;
+function setSymbol(key){ ui.pendingSymbol=key; ui.tool='select'; ui.draft=null; ui.effDraft=null; ui.rectPending=null;
   if(!key)ui.lineDraft=null;
   document.querySelectorAll('#palette [data-tool]').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('#symbol-pal .tool-btn').forEach(b=>b.classList.toggle('active',b.dataset.sym===key));
@@ -801,6 +1164,8 @@ document.getElementById('grid-div').onchange=e=>{ settings.gridDiv=Math.max(1,+e
 document.getElementById('show-grid').onchange=e=>{ settings.showGrid=e.target.checked; render(); save(); };
 document.getElementById('show-dim').onchange=e=>{ settings.showDim=e.target.checked; render(); save(); };
 document.getElementById('show-table').onchange=e=>{ settings.showTable=e.target.checked; render(); save(); };
+document.getElementById('pen-mode').onchange=e=>{ settings.penMode=e.target.checked; ui.rectPending=null; save();
+  document.getElementById('statusbar').textContent = e.target.checked?'ペンモード：✏️ペンで作図／指でズーム・移動':statusText(); };
 
 // ズーム
 document.getElementById('zoom-in').onclick=()=>{ const s=panes[ui.activeFloor].svg; zoomAt(s.clientWidth/2,s.clientHeight/2,1.2); };
@@ -811,26 +1176,36 @@ document.getElementById('zoom-fit').onclick=fitView;
 document.getElementById('undo-btn').onclick=undo;
 document.getElementById('redo-btn').onclick=redo;
 
+// 案件
+document.getElementById('proj-btn').onclick=openProjPanel;
+// 選択中の削除ボタン（キーボード無しiPadの主削除手段）
+document.getElementById('del-btn').onclick=()=>deleteSelected();
+
 // 印刷 / 書き出し / 全消去
 document.getElementById('print-btn').onclick=openPrint;
 document.getElementById('export-btn').onclick=exportSVG;
-document.getElementById('clear-btn').onclick=()=>{ if(confirm('1階・2階すべて消去します。よろしいですか？')){
+document.getElementById('png-btn').onclick=exportPNG;
+document.getElementById('clear-btn').onclick=()=>{ if(confirm('いまの案件の1階・2階をすべて消去します（他の案件は消えません）。よろしいですか？')){
   pushUndo(); project.floors=[newFloor('f1','1階'),newFloor('f2','2階')]; ui.selId=null; render(); save(); } };
 
 /* ===== キーボード ===== */
 document.addEventListener('keydown',e=>{
   const typing=/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName);
   const meta=e.metaKey||e.ctrlKey;
-  if(meta && e.key.toLowerCase()==='z'){ e.preventDefault(); e.shiftKey?redo():undo(); return; }
-  if(meta && e.key.toLowerCase()==='y'){ e.preventDefault(); redo(); return; }
+  // 案件パネルが開いていれば Escape で閉じる（入力中でも有効）
+  if(e.key==='Escape'){ const pv=document.getElementById('projview'); if(pv && !pv.classList.contains('hidden')){ closeProjPanel(); e.preventDefault(); return; } }
+  // ⌘Z/⌘Y は入力欄編集中はブラウザ標準の取り消しに任せる（図面Undoが横取りしない）
+  if(!typing && meta && e.key.toLowerCase()==='z'){ e.preventDefault(); e.shiftKey?redo():undo(); return; }
+  if(!typing && meta && e.key.toLowerCase()==='y'){ e.preventDefault(); redo(); return; }
   if(typing) return;
   if(ui.draft){
     if(e.key==='Enter'){ finalizePoly(); e.preventDefault(); return; }
     if(e.key==='Escape'){ ui.draft=null; render(); e.preventDefault(); return; }
     if(e.key==='Backspace'){ ui.draft.verts.pop(); if(!ui.draft.verts.length)ui.draft=null; render(); e.preventDefault(); return; }
+    return;  // 作図中は他のショートカット(v/r等)を無効化＝誤キーで折れ線を失わない
   }
   if(e.key==='Escape'){ ui.selId=null; ui.lineDraft=null; ui.effDraft=null; setSymbol(null); render(); return; }
-  if((e.key==='Delete'||e.key==='Backspace') && ui.selId){ deleteSelected(); e.preventDefault(); return; }
+  if(e.key==='Delete' && ui.selId){ deleteSelected(); e.preventDefault(); return; }   // 削除はDelete専用（Backspaceは作図中の点戻し用に温存）
   if(e.key==='r'||e.key==='R'){ rotateSel(); }
   if(e.key==='v'||e.key==='V'){ setTool('select'); }
 });
@@ -838,7 +1213,7 @@ document.addEventListener('keydown',e=>{
 /* =========================================================================
    11. SVG 書き出し（2面＋寸法＋シンボル＋任意で求積表）
    ========================================================================= */
-function exportSVG(){
+function buildExportSVG(){
   const selBak=ui.selId, toolBak=ui.tool;
   // 方眼の同梱は画面の「方眼」トグルに従う（チェックを外せばグリッド無しで書き出し）
   ui.selId=null; ui.tool='select';
@@ -857,23 +1232,42 @@ function exportSVG(){
   if(inc) s+=tableSVG(top+H+8, totalW);
   s+=`<text x="${totalW-6}" y="${totalH-8}" font-size="10" text-anchor="end" fill="${COL.muted}">総合建設業／株式会社 大建</text>`;
   s+=`</svg>`;
-  const blob=new Blob([s],{type:'image/svg+xml'});
+  ui.selId=selBak; ui.tool=toolBak; render();
+  return {svg:s, w:totalW, h:totalH};
+}
+function exportSVG(){
+  const {svg}=buildExportSVG();
+  const blob=new Blob([svg],{type:'image/svg+xml'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
   a.download=(project.meta.title||'現況図兼求積図')+'.svg'; a.click();
-  ui.selId=selBak; ui.tool=toolBak; render();
 }
-function tableHeight(){ let rows=2; project.floors.forEach(f=>{ rows+=1+Math.max(1,f.shapes.length)+1; }); return rows*16+24; }
+function exportPNG(){
+  const {svg,w,h}=buildExportSVG(), scale=2;
+  const url=URL.createObjectURL(new Blob([svg],{type:'image/svg+xml;charset=utf-8'}));
+  const img=new Image();
+  img.onload=()=>{ const c=document.createElement('canvas'); c.width=Math.round(w*scale); c.height=Math.round(h*scale);
+    const ctx=c.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,c.width,c.height); ctx.setTransform(scale,0,0,scale,0,0); ctx.drawImage(img,0,0);
+    c.toBlob(b=>{ if(!b){ URL.revokeObjectURL(url); alert('PNGの生成に失敗しました。SVG書き出しをご利用ください。'); return; }
+      const a=document.createElement('a'); a.href=URL.createObjectURL(b);
+      a.download=(project.meta.title||'現況図兼求積図')+'.png'; a.click(); URL.revokeObjectURL(url); }, 'image/png'); };
+  img.onerror=()=>{ URL.revokeObjectURL(url); alert('PNGの生成に失敗しました。SVG書き出しをご利用ください。'); };
+  img.src=url;
+}
+function tableHeight(){ let rows=2; project.floors.forEach(f=>{ const n=f.shapes.filter(s=>s.kind!=='site').length; rows+=1+Math.max(1,n)+1; }); return rows*16+24; }
 function tableSVG(y0,totalW){
   let s=`<g font-size="11" fill="${COL.ink}">`; let y=y0+14;
   s+=`<text x="6" y="${y}" font-size="12" font-weight="600">求積表</text>`; y+=18;
   let total=0;
-  project.floors.forEach(f=>{ let sum=0;
+  project.floors.forEach(f=>{
+    const qs=f.shapes.filter(sh=>sh.kind!=='site');   // 敷地線は求積に含めない
     s+=`<text x="6" y="${y}" font-weight="600">${esc(f.name)}</text>`; y+=15;
-    (f.shapes.length?f.shapes:[null]).forEach(sh=>{ if(sh){ const a=m2(areaMm2(sh.verts)); sum+=a;
+    (qs.length?qs:[null]).forEach(sh=>{ if(sh){ const a=m2(areaMm2(sh.verts));
         s+=`<text x="18" y="${y}">${esc(sh.name||'区画')}</text><text x="240" y="${y}" text-anchor="end">${fmt2(a)} m²</text>`; }
       else { s+=`<text x="18" y="${y}" fill="${COL.muted}">（区画なし）</text>`; } y+=15; });
+    const sum=floorSumM2(f);                            // 計＝各区画(丸め済み)の合算＝内訳と一致
     s+=`<line x1="18" y1="${y-11}" x2="240" y2="${y-11}" stroke="${COL.accent}"/>`;
     s+=`<text x="18" y="${y}" font-weight="700">${esc(f.name)} 計</text><text x="240" y="${y}" text-anchor="end" font-weight="700">${fmt2(sum)} m²</text>`; y+=20;
+    if(floorHasOverlap(f)){ s+=`<text x="18" y="${y}" font-size="10" fill="#b3322a">※区画が重なっています（重なり分が二重計上されています）</text>`; y+=16; }
     total+=sum; });
   s+=`<text x="6" y="${y}" font-weight="700">建物合計（1F＋2F）：${fmt2(total)} m²</text>`;
   s+=`</g>`; return s;
@@ -936,10 +1330,26 @@ function buildFloorSVG(floor, numbers){
   const bw=maxx-minx,bh=maxy-miny,span=Math.max(bw,bh,1000);
   const pad=span*0.20, off=span*0.06, fz=span*0.028, nz=span*0.055, lw=span*0.0016;
   let s=`<svg viewBox="${minx-pad} ${miny-pad} ${bw+pad*2} ${bh+pad*2}" preserveAspectRatio="xMidYMid meet" font-family="sans-serif">`;
-  floor.shapes.forEach(sh=>{
+  // 敷地外形線
+  floor.shapes.filter(sh=>sh.kind==='site').forEach(sh=>{
     const pts=sh.verts.map(v=>`${v.x},${v.y}`).join(' ');
-    if(sh.kind==='site'){ s+=`<polygon points="${pts}" fill="none" stroke="#1a1a1a" stroke-width="${lw}"/>`; return; }
+    s+=`<polygon points="${pts}" fill="none" stroke="#1a1a1a" stroke-width="${lw}"/>`;
+  });
+  // 矩形を融合して1棟に：白塗り＋区画仕切り(点線=求積線)＋外周(太実線=躯体)
+  const rb=floor.shapes.filter(sh=>sh.kind==='rect').map(rectBounds);
+  if(rb.length){
+    rb.forEach(r=>{ s+=`<rect x="${r.x1}" y="${r.y1}" width="${r.x2-r.x1}" height="${r.y2-r.y1}" fill="#fff"/>`; });
+    const u=unionRects(rb), dash=`${comma(Math.round(span*0.014))} ${comma(Math.round(span*0.010))}`;
+    mergeSegs(u.partitions).forEach(g=>{ s+=`<line x1="${g.x1}" y1="${g.y1}" x2="${g.x2}" y2="${g.y2}" stroke="#1a1a1a" stroke-width="${lw*0.7}" stroke-dasharray="${dash}"/>`; });
+    mergeSegs(u.outline).forEach(g=>{ s+=`<line x1="${g.x1}" y1="${g.y1}" x2="${g.x2}" y2="${g.y2}" stroke="#1a1a1a" stroke-width="${lw*1.4}" stroke-linecap="square"/>`; });
+  }
+  // 多角形(三斜など)は自前の輪郭
+  floor.shapes.filter(sh=>sh.kind!=='site'&&sh.kind!=='rect').forEach(sh=>{
+    const pts=sh.verts.map(v=>`${v.x},${v.y}`).join(' ');
     s+=`<polygon points="${pts}" fill="#fff" stroke="#1a1a1a" stroke-width="${lw*1.3}"/>`;
+  });
+  // 区画番号＋寸法（矩形=間口×奥行／多角形=全辺）
+  floor.shapes.filter(sh=>sh.kind!=='site').forEach(sh=>{
     const cx=sh.verts.reduce((a,v)=>a+v.x,0)/sh.verts.length, cy=sh.verts.reduce((a,v)=>a+v.y,0)/sh.verts.length;
     const num=numbers.get(sh.id);
     if(num) s+=`<text x="${cx}" y="${cy}" font-size="${nz}" text-anchor="middle" dominant-baseline="central" fill="#1a1a1a">${circ(num)}</text>`;
@@ -948,7 +1358,6 @@ function buildFloorSVG(floor, numbers){
       s+=dimH(Math.min(...xs),Math.max(...xs),Math.min(...ys),off,lw,fz);
       s+=dimV(Math.min(...ys),Math.max(...ys),Math.min(...xs),off,lw,fz);
     } else {
-      // 多角形は全辺に寸法を自動表示（誰が見ても各辺の寸法が分かるように）
       for(let i=0;i<sh.verts.length;i++){ s+=dimEdge(sh.verts[i],sh.verts[(i+1)%sh.verts.length],{x:cx,y:cy},off,lw,fz); }
     }
   });
@@ -991,8 +1400,8 @@ function buildPrint(){
       } else { area=+m2(areaMm2(s.verts)).toFixed(2); expr=`座標法 ＝ ${area.toFixed(2)}`; }
       return {num:n, name:s.name||'区画', expr, area};
     });
-    const sum=+items.reduce((a,it)=>a+it.area,0).toFixed(2);
-    return {fi, name:f.name, items, sum};
+    const sum=+items.reduce((a,it)=>a+it.area,0).toFixed(2);   // 計＝各内訳行の合算（積み上げと必ず一致）
+    return {fi, name:f.name, items, sum, overlap:floorHasOverlap(f)};
   }).filter(g=>g.items.length);
 
   let rows='';
@@ -1001,6 +1410,7 @@ function buildPrint(){
     const label=g.fi===0?'建築面積':`${esc(g.name)}床面積`;
     const range=g.items.length>1?`${circ(g.items[0].num)}〜${circ(g.items[g.items.length-1].num)}`:circ(g.items[0].num);
     rows+=`<tr class="sumr"><td></td><td>${label}　${range}</td><td class="eq">＝ ${g.sum.toFixed(2)} ㎡</td></tr>`;
+    if(g.overlap) rows+=`<tr><td></td><td colspan="2" style="color:#b3322a">※区画が重なっています（重なり分が二重計上されています）</td></tr>`;
   });
   if(!rows) rows=`<tr><td colspan="3" style="color:#999">区画がありません（矩形・多角形を描いてください）</td></tr>`;
 
@@ -1058,7 +1468,7 @@ const PRINT_CSS=`
    ========================================================================= */
 history.pushState(null,document.title,location.href);
 window.addEventListener('popstate',()=>{ history.pushState(null,document.title,location.href); });
-window.addEventListener('beforeunload',e=>{ e.preventDefault(); e.returnValue=''; });
+// beforeunloadの離脱確認は撤去：全操作で自動保存済みのため不要（iOS/PWAでは効かず、毎回の確認はむしろ誤った不安を生む）
 
 /* =========================================================================
    13. 起動
@@ -1074,15 +1484,23 @@ load();
   document.getElementById('show-grid').checked=settings.showGrid;
   document.getElementById('show-dim').checked=settings.showDim;
   document.getElementById('show-table').checked=settings.showTable;
+  document.getElementById('pen-mode').checked=!!settings.penMode;
 })();
-/* ===== iPad: 2本指でズーム＆パン（1本指は描画/移動のまま） ===== */
+/* ===== iPad: 2本指でズーム＆パン（1本指は描画/移動のまま） =====
+   指の本数は全ペイン共通(allTouch)で数えるのが正典。これで
+   ・2本→1本に戻したら即 ui.pinching=false（描画/移動が復帰）
+   ・指が画面外/別要素で離れて pointerup を取りこぼしても window 購読で回収（固着しない）       */
+const allTouch=new Map();                 // pointerId -> true（全ペイン共通の指カウント）
+function refreshPinch(){ ui.pinching = allTouch.size>=2; if(ui.pinching) ui.rectPending=null; }  // 別ペイン跨ぎでも保留矩形を確実に破棄
 panes.forEach(pane=>{
   const svg=pane.svg; const pts=new Map(); let pz=null;
   const loc=e=>{ const r=svg.getBoundingClientRect(); return {x:e.clientX-r.left, y:e.clientY-r.top}; };
   svg.addEventListener('pointerdown',e=>{
     if(e.pointerType!=='touch') return;
-    pts.set(e.pointerId, loc(e));
-    if(pts.size===2){ ui.pinching=true; e.stopPropagation();
+    allTouch.set(e.pointerId,true); pts.set(e.pointerId, loc(e));
+    refreshPinch();
+    if(pts.size>=2){ e.stopPropagation();
+      ui.rectPending=null;                // 2本目が触れた＝ピンチ確定。保留中の矩形作成を取消（幽霊矩形を断つ）
       const a=[...pts.values()], mid={x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2};
       pz={ d0:Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y)||1, s0:view.scale,
            wx:(mid.x-view.tx)/view.scale, wy:(mid.y-view.ty)/view.scale }; }
@@ -1096,10 +1514,14 @@ panes.forEach(pane=>{
       view.scale=Math.max(0.0005, pz.s0*(d/pz.d0));
       view.tx=mid.x - pz.wx*view.scale; view.ty=mid.y - pz.wy*view.scale; render(); }
   },true);
-  const end=e=>{ if(pts.has(e.pointerId)) pts.delete(e.pointerId);
-    if(pts.size<2){ pz=null; if(pts.size===0){ ui.pinching=false; save(); } } };
-  svg.addEventListener('pointerup',end,true);
-  svg.addEventListener('pointercancel',end,true);
+  const end=e=>{
+    const had=allTouch.delete(e.pointerId);
+    if(pts.has(e.pointerId)) pts.delete(e.pointerId);
+    if(pts.size<2) pz=null;
+    if(had){ refreshPinch(); if(allTouch.size===0) save(); }
+  };
+  window.addEventListener('pointerup',end,true);      // svg外で離してもカウントを回収＝固着防止
+  window.addEventListener('pointercancel',end,true);
 });
 
 /* ===== Service Worker（オフライン動作） ===== */
