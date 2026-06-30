@@ -1467,21 +1467,23 @@ function buildFloorSVG(floor, items){
   floor.shapes.filter(sh=>sh.kind!=='site'&&sh.kind!=='rect'&&!decomposeRectilinear(sh.verts)).forEach(sh=>{
     const v=sh.verts; for(let i=2;i<v.length-1;i++){ s+=`<line x1="${v[0].x}" y1="${v[0].y}" x2="${v[i].x}" y2="${v[i].y}" stroke="#1a1a1a" stroke-width="${lw*0.4}"/>`; }
   });
-  // 寸法（求積図の作法・任意）：求積図の本質は各区画の×と求積表。寸法は補助なので「寸法」OFFで消せる
-  //   ・直角の躯体はフロア全体のグリッド座標を集め、外周に一段だけ（上＝間口／左＝奥行・内側には入れない）
-  //   ・斜め多角形（四角に分割できない＝三斜）は従来どおり各辺に
+  // 寸法（求積図の作法・採用＝全区画インライン）：各区画の番号①の真下に「間口×奥行」を
+  //   実寸mm(comma)で小さく置く。寸法線・引出線・●は引かない＝躯体線上を通る／建物内部を
+  //   横切る／数字どうしの重なり、が原理的に起きない。番号(cx,cy)は各区画の重心で既に
+  //   非重複なので、その各々にぶら下げるだけで全区画ぶん必ず読める。
+  //   ※ items と drects は index 一致しない（斜め三斜が items にだけ存在し drect 無し）ため、
+  //     番号位置は「重心一致」で探す（unitRect の cx,cy は区画重心＝drects と完全一致・許容1mm）。
+  //     見つからなければ区画重心にフォールバック。「寸法」OFF(printDim=false)で消せるのは従来どおり。
   if(printDim){
     if(drects.length){
-      const minY=Math.min(...drects.map(r=>r.y1)), minX=Math.min(...drects.map(r=>r.x1));
-      // 寸法を拾う区画を「その辺に接している区画だけ」に限定＝各通りの実寸（区画ぴったり）。
-      //   こうしないと反対側の区画の角まで拾って中途半端な刻み寸法が湧く（＝訳のわからん寸法）
-      const topR=drects.filter(r=>Math.abs(r.y1-minY)<0.5);    // 上辺に接する＝間口の通り
-      const leftR=drects.filter(r=>Math.abs(r.x1-minX)<0.5);   // 左辺に接する＝奥行の通り
-      const gx=uniqSorted(topR.reduce((a,r)=>(a.push(r.x1,r.x2),a),[]));
-      const gy=uniqSorted(leftR.reduce((a,r)=>(a.push(r.y1,r.y2),a),[]));
-      s+=dimChainH(gx, topR, minY, off, lw, fz);   // 上＝間口
-      s+=dimChainV(gy, leftR, minX, off, lw, fz);   // 左＝奥行
+      drects.forEach(r=>{
+        const gx=(r.x1+r.x2)/2, gy=(r.y1+r.y2)/2;
+        const it=(items||[]).find(t=>Math.abs(t.cx-gx)<1&&Math.abs(t.cy-gy)<1);
+        const cx=it?it.cx:gx, cy=it?it.cy:gy;
+        s+=dimInlineLabel(r, cx, cy, nz, fz);
+      });
     }
+    // 斜め多角形（四角に分割できない＝三斜）は従来どおり各辺に（区画ラベルが置けないため）
     floor.shapes.filter(sh=>sh.kind!=='site'&&sh.kind!=='rect'&&!decomposeRectilinear(sh.verts)).forEach(sh=>{
       const cx=sh.verts.reduce((a,v)=>a+v.x,0)/sh.verts.length, cy=sh.verts.reduce((a,v)=>a+v.y,0)/sh.verts.length;
       for(let i=0;i<sh.verts.length;i++){ s+=dimEdge(sh.verts[i],sh.verts[(i+1)%sh.verts.length],{x:cx,y:cy},off,lw,fz); }
@@ -1558,6 +1560,34 @@ function dimEdge(a,b,c,off,lw,fz){
     +`<line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}" stroke="${DIMC}" stroke-width="${lw*0.7}"/>`
     +dimDot(ax,ay,r)+dimDot(bx,by,r)
     +`<text x="${tx}" y="${ty-fz*0.4}" font-size="${fz}" text-anchor="middle" transform="rotate(${ang} ${tx} ${ty})" fill="${DIMT}">${comma(len)}</text>`;
+}
+/* ===== 求積図 区画インライン寸法（採用＝B案ベース＋A案の堅牢マッチング） =====
+   各区画の番号①の真下に「間口×奥行」を実寸mm(comma)で小さく置く。
+   ・寸法線/引出線/●は一切引かない＝躯体外形線の上を通る・建物内部を横切る・
+     数字どうしが重なる、が「原理的に」起きない（厳守ルール2・3を構造で保証）。
+   ・番号(cx,cy)は各区画の重心で既に非重複なので、その各々に固定オフセットで
+     ぶら下げるだけで全区画ぶん必ず読める（完全性）。
+   ・白フチ(paint-order)で背景の対角線×(lw*0.4)・区画仕切り線(lw*0.5)より前面化。
+   ・区画が小さすぎて番号＋文字が物理的に入らない時だけ描かない（番号は残り、
+     求積表に同値があるのでデグレにならない＝崩れ防止を完全性より優先）。
+   引数 cx,cy は「その区画の番号円の中心」（呼び出し側で重心一致探索して渡す）。 */
+function dimInlineLabel(r, cx, cy, nz, fz){
+  const w=Math.round(r.x2-r.x1), d=Math.round(r.y2-r.y1);   // 間口・奥行（実寸mm）
+  if(w<=0||d<=0) return '';
+  const label=comma(w)+'×'+comma(d);                         // 例 4,930×7,880（半角×＝幅一定）
+  const R=nz*0.62;                                           // 番号円の半径（描画と一致）
+  // フォントは番号より小さい副次サイズ。横に入らなければ1段だけ縮めて救済（A案の段階縮小の最小版）
+  for(const flz of [nz*0.46, nz*0.38]){
+    const estW=label.length*flz*0.56;                       // 概算文字幅（半角comma数字＋半角×）
+    if((r.x2-r.x1) < estW + flz*0.6) continue;              // 横にはみ出す→次の小サイズへ
+    // 番号円の真下に1行。円の下端 cy+R から flz の約1行ぶん下にベースライン
+    const ly=cy + R + flz*1.05;
+    if((ly + flz*0.15) > r.y2) continue;                   // 番号＋ラベルが区画下辺に収まらない→縮小
+    return `<text x="${cx}" y="${round2(ly)}" font-size="${round2(flz)}" text-anchor="middle" `
+      +`fill="#1a1a1a" stroke="#fff" stroke-width="${round2(flz*0.28)}" `
+      +`style="paint-order:stroke fill">${label}</text>`;
+  }
+  return '';   // どうしても入らない極小区画は無理に出さない（崩れ防止優先・番号は残る）
 }
 
 /* ===== 印刷図：撤去シンボル／有効寸法（画面の drawSymbol を mm 座標で再現） ===== */
