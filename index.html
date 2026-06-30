@@ -178,6 +178,10 @@
   <button class="tool-btn" data-tool="text">A 文字注記（前面道路など）</button>
   <div class="hint">敷地は厳密でなく概形でOK。閉じれば外形線になります（求積には入りません）。文字はクリックで置いて後から編集。</div>
 
+  <h2>階の操作</h2>
+  <button class="tool-btn" id="copy-1to2">⇧ 1階の図形を2階へ複製</button>
+  <div class="hint">総2階など、2階が1階とほぼ同じ時に。2階を1階の複製で置き換えます。</div>
+
   <h2>撤去関連シンボル</h2>
   <div class="grid3" id="symbol-pal"></div>
   <div class="hint">クリックで選択→図面をクリックで配置。ブロック塀は始点・終点の2クリック。選択中に R で90°回転。</div>
@@ -365,9 +369,16 @@ function mergeSegs(segs){
   }
   return res;
 }
-// 階の求積合計(m²)：各区画を「行に出す丸め済み面積」で合算（内訳の積み上げ＝計が必ず一致）。敷地線は含めない
+// 区画1つの面積(m²)。矩形=間口×奥行(丸め)／多角形=シューレース。画面と印刷で同一基準にするための正典
+function shapeAreaM2(s){
+  if(s.kind==='rect'){ const xs=s.verts.map(v=>v.x),ys=s.verts.map(v=>v.y);
+    const w=round2((Math.max(...xs)-Math.min(...xs))/1000), d=round2((Math.max(...ys)-Math.min(...ys))/1000);
+    return round2(w*d); }
+  return round2(m2(areaMm2(s.verts)));
+}
+// 階の求積合計(m²)：各区画(丸め済み)の合算（内訳の積み上げ＝計が必ず一致）。敷地線は含めない
 function floorSumM2(floor){
-  let a=0; ((floor&&floor.shapes)||[]).forEach(s=>{ if(s.kind!=='site'&&Array.isArray(s.verts)) a+=round2(m2(areaMm2(s.verts))); });
+  let a=0; ((floor&&floor.shapes)||[]).forEach(s=>{ if(s.kind!=='site'&&Array.isArray(s.verts)) a+=shapeAreaM2(s); });
   return a;
 }
 // 重なり検知（矩形・多角形すべて対応）。辺の真の交差か、片方の頂点が他方の内部にあれば重なり。接触（辺共有）は重なり扱いにしない
@@ -505,6 +516,17 @@ function renameProjectSlot(id,name){ const st=readStore(); if(!st)return; const 
   if(id===currentId){ project.meta=project.meta||{}; project.meta.title=r.name; }
   writeStoreOrWarn(st); }
 function pushHistoryNone(){}   // 案件切替時はUndo履歴をまたがない（setProjectでクリア）
+
+// 1階の図形を2階へ丸ごと複製（id振り直し）。総2階の描き直しを省く
+function copy1Fto2F(){
+  const f1=project.floors[0], f2=project.floors[1]; if(!f1||!f2) return;
+  const has2=(f2.shapes.length||f2.symbols.length||f2.effdims.length||f2.texts.length);
+  if(has2 && !confirm('2階の現在の内容を、1階の複製で置き換えます。よろしいですか？')) return;
+  pushUndo();
+  const clone=arr=>(arr||[]).map(o=>{ const c=JSON.parse(JSON.stringify(o)); c.id=nextId(); return c; });
+  f2.shapes=clone(f1.shapes); f2.symbols=clone(f1.symbols); f2.effdims=clone(f1.effdims); f2.texts=clone(f1.texts);
+  ui.activeFloor=1; ui.selId=null; render(); save();
+}
 
 /* ===== バックアップ（全案件をJSONで書出/読込） ===== */
 function exportBackup(){
@@ -723,7 +745,7 @@ function drawShape(svg,pane,s){
   // 区画名＋面積
   const c=centroid(s.verts);
   svg.appendChild(txt(sx(c.x),sy(c.y)-3,s.name||'区画',{base:'middle',weight:600,size:13}));
-  svg.appendChild(txt(sx(c.x),sy(c.y)+13,fmt2(m2(areaMm2(s.verts)))+' m²',{base:'middle',size:11,fill:COL.muted}));
+  svg.appendChild(txt(sx(c.x),sy(c.y)+13,fmt2(shapeAreaM2(s))+' m²',{base:'middle',size:11,fill:COL.muted}));
 
   // 頂点ハンドル（選択中・選択ツール）
   if(sel && ui.tool==='select'){
@@ -853,10 +875,13 @@ function drawText(svg,pane,t){
     drag(pane.svg,p=>{ t.x=o.x+snap(p.x-start.x); t.y=o.y+snap(p.y-start.y); render(); }); });
 }
 
-/* ===== 汎用ドラッグ（onEnd 省略可） ===== */
+/* ===== 汎用ドラッグ（onEnd 省略可。再描画は rAF で1フレーム1回に間引き＝多区画でも軽い） ===== */
 function drag(svg,onMove,onEnd){
-  function mv(ev){ if(ui.pinching)return; onMove(paneMm(svg,ev)); }
-  function up(){ document.removeEventListener('pointermove',mv); document.removeEventListener('pointerup',up); document.removeEventListener('pointercancel',up); save(); if(onEnd)onEnd(); }
+  let pend=null, raf=0;
+  const flush=()=>{ raf=0; if(pend){ const p=pend; pend=null; onMove(p); } };
+  function mv(ev){ if(ui.pinching)return; pend=paneMm(svg,ev); if(!raf) raf=requestAnimationFrame(flush); }
+  function up(){ document.removeEventListener('pointermove',mv); document.removeEventListener('pointerup',up); document.removeEventListener('pointercancel',up);
+    if(raf){ cancelAnimationFrame(raf); raf=0; } if(pend){ onMove(pend); pend=null; } save(); if(onEnd)onEnd(); }
   document.addEventListener('pointermove',mv); document.addEventListener('pointerup',up);
   document.addEventListener('pointercancel',up);   // iPadのパーム/ジェスチャ奪取でcancelが飛んでも後始末する（固着防止）
 }
@@ -1005,10 +1030,12 @@ function finalizePoly(){
 /* ===== ズーム / パン ===== */
 function zoomAt(px,py,f){ const mx=mmX(px),my=mmY(py);
   view.scale*=f; view.tx=px-mx*view.scale; view.ty=py-my*view.scale; render(); save(); }
-function startPan(svg,e){ const r=svg.getBoundingClientRect();
-  const ox=view.tx,oy=view.ty,sx0=e.clientX,sy0=e.clientY; let moved=false;
-  function mv(ev){ if(ui.pinching)return; moved=true; view.tx=ox+(ev.clientX-sx0); view.ty=oy+(ev.clientY-sy0); render(); }
-  function up(){ document.removeEventListener('pointermove',mv); document.removeEventListener('pointerup',up); document.removeEventListener('pointercancel',up); if(moved)save(); }
+function startPan(svg,e){
+  const ox=view.tx,oy=view.ty,sx0=e.clientX,sy0=e.clientY; let moved=false, raf=0, lx=sx0, ly=sy0;
+  const apply=()=>{ raf=0; view.tx=ox+(lx-sx0); view.ty=oy+(ly-sy0); render(); };
+  function mv(ev){ if(ui.pinching)return; moved=true; lx=ev.clientX; ly=ev.clientY; if(!raf) raf=requestAnimationFrame(apply); }
+  function up(){ document.removeEventListener('pointermove',mv); document.removeEventListener('pointerup',up); document.removeEventListener('pointercancel',up);
+    if(raf){ cancelAnimationFrame(raf); raf=0; } if(moved){ apply(); save(); } }
   document.addEventListener('pointermove',mv); document.addEventListener('pointerup',up);
   document.addEventListener('pointercancel',up);   // cancelでもパンを終了（固着防止）
 }
@@ -1040,7 +1067,7 @@ function renderTables(){
   let total=0; let html='<div class="qtables">'; let anyOverlap=false;
   project.floors.forEach(f=>{
     const qs=f.shapes.filter(s=>s.kind!=='site');   // 敷地線は求積に含めない
-    let rows=qs.map(s=>{ const a=m2(areaMm2(s.verts));
+    let rows=qs.map(s=>{ const a=shapeAreaM2(s);
       return `<tr><td>${esc(s.name||'区画')}</td><td class="num">${fmt2(a)}</td></tr>`; }).join('');
     if(!qs.length) rows=`<tr><td colspan="2" style="color:#aaa">（区画なし）</td></tr>`;
     const sum=floorSumM2(f);                          // 計＝各区画(丸め済み)の合算＝内訳の積み上げと必ず一致
@@ -1083,7 +1110,7 @@ function updateProps(){
         nd=>{ pushUndo(); const tl=o.verts[0]; o.verts=rectVerts(tl,{x:tl.x+w,y:tl.y+Math.max(1,+nd||d)}); render(); save(); }));
     }
     const info=document.createElement('div'); info.className='hint';
-    info.textContent='面積：'+fmt2(m2(areaMm2(o.verts)))+' m²（座標法）';
+    info.textContent='面積：'+fmt2(shapeAreaM2(o))+' m²'+(o.kind==='rect'?'（間口×奥行）':'');
     body.appendChild(info);
   } else if('a' in o && !('type' in o)){ // 有効寸法
     const info=document.createElement('div'); info.className='hint';
@@ -1180,6 +1207,8 @@ document.getElementById('redo-btn').onclick=redo;
 document.getElementById('proj-btn').onclick=openProjPanel;
 // 選択中の削除ボタン（キーボード無しiPadの主削除手段）
 document.getElementById('del-btn').onclick=()=>deleteSelected();
+// 1階→2階 複製
+document.getElementById('copy-1to2').onclick=copy1Fto2F;
 
 // 印刷 / 書き出し / 全消去
 document.getElementById('print-btn').onclick=openPrint;
@@ -1261,7 +1290,7 @@ function tableSVG(y0,totalW){
   project.floors.forEach(f=>{
     const qs=f.shapes.filter(sh=>sh.kind!=='site');   // 敷地線は求積に含めない
     s+=`<text x="6" y="${y}" font-weight="600">${esc(f.name)}</text>`; y+=15;
-    (qs.length?qs:[null]).forEach(sh=>{ if(sh){ const a=m2(areaMm2(sh.verts));
+    (qs.length?qs:[null]).forEach(sh=>{ if(sh){ const a=shapeAreaM2(sh);
         s+=`<text x="18" y="${y}">${esc(sh.name||'区画')}</text><text x="240" y="${y}" text-anchor="end">${fmt2(a)} m²</text>`; }
       else { s+=`<text x="18" y="${y}" fill="${COL.muted}">（区画なし）</text>`; } y+=15; });
     const sum=floorSumM2(f);                            // 計＝各区画(丸め済み)の合算＝内訳と一致
@@ -1447,7 +1476,7 @@ function buildPrint(){
         const w=+((Math.max(...xs)-Math.min(...xs))/1000).toFixed(2);
         const d=+((Math.max(...ys)-Math.min(...ys))/1000).toFixed(2);
         area=+(w*d).toFixed(2); expr=`${w.toFixed(2)} × ${d.toFixed(2)} ＝ ${area.toFixed(2)}`;
-      } else { area=+m2(areaMm2(s.verts)).toFixed(2); expr=`座標法 ＝ ${area.toFixed(2)}`; }
+      } else { area=+m2(areaMm2(s.verts)).toFixed(2); expr=`＝ ${area.toFixed(2)}`; }
       return {num:n, name:s.name||'区画', expr, area};
     });
     const sum=+items.reduce((a,it)=>a+it.area,0).toFixed(2);   // 計＝各内訳行の合算（積み上げと必ず一致）
