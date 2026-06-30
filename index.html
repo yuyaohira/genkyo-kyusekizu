@@ -1572,22 +1572,24 @@ function dimEdge(a,b,c,off,lw,fz){
      求積表に同値があるのでデグレにならない＝崩れ防止を完全性より優先）。
    引数 cx,cy は「その区画の番号円の中心」（呼び出し側で重心一致探索して渡す）。 */
 function dimInlineLabel(r, cx, cy, nz, fz){
+  // 寸法線なしで「ちゃんと寸法」：間口は上辺の内側中央、奥行は左辺の内側中央(縦書き)に
+  //   数字だけを置く＝実図の寸法位置のまま線を省いた形。白フチで×の上に出す。
   const w=Math.round(r.x2-r.x1), d=Math.round(r.y2-r.y1);   // 間口・奥行（実寸mm）
   if(w<=0||d<=0) return '';
-  const label=comma(w)+'×'+comma(d);                         // 例 4,930×7,880（半角×＝幅一定）
-  const R=nz*0.62;                                           // 番号円の半径（描画と一致）
-  // フォントは番号より小さい副次サイズ。横に入らなければ1段だけ縮めて救済（A案の段階縮小の最小版）
-  for(const flz of [nz*0.46, nz*0.38]){
-    const estW=label.length*flz*0.56;                       // 概算文字幅（半角comma数字＋半角×）
-    if((r.x2-r.x1) < estW + flz*0.6) continue;              // 横にはみ出す→次の小サイズへ
-    // 番号円の真下に1行。円の下端 cy+R から flz の約1行ぶん下にベースライン
-    const ly=cy + R + flz*1.05;
-    if((ly + flz*0.15) > r.y2) continue;                   // 番号＋ラベルが区画下辺に収まらない→縮小
-    return `<text x="${cx}" y="${round2(ly)}" font-size="${round2(flz)}" text-anchor="middle" `
-      +`fill="#1a1a1a" stroke="#fff" stroke-width="${round2(flz*0.28)}" `
-      +`style="paint-order:stroke fill">${label}</text>`;
-  }
-  return '';   // どうしても入らない極小区画は無理に出さない（崩れ防止優先・番号は残る）
+  const flz=nz*0.42, R=nz*0.62, ws=comma(w), ds=comma(d);
+  const tw=str=>str.length*flz*0.56;                         // 概算文字幅（半角）
+  const halo=(x,y,str,rot)=>`<text x="${round2(x)}" y="${round2(y)}" font-size="${round2(flz)}" `
+    +`text-anchor="middle" dominant-baseline="central" fill="#1a1a1a" stroke="#fff" `
+    +`stroke-width="${round2(flz*0.3)}" style="paint-order:stroke fill"`
+    +(rot?` transform="rotate(${rot} ${round2(x)} ${round2(y)})"`:'')+`>${str}</text>`;
+  let g='';
+  // 間口＝上辺の内側中央（番号円と被らない高さがある時だけ）
+  const wy=r.y1+flz*0.95;
+  if(w > tw(ws)+flz*0.8 && (cy-R*0.9-wy) > flz*0.2) g+=halo((r.x1+r.x2)/2, wy, ws, 0);
+  // 奥行＝左辺の内側中央・縦書き（番号円と被らない幅がある時だけ）
+  const dx=r.x1+flz*0.95;
+  if(d > tw(ds)+flz*0.8 && (cx-R*0.9-dx) > flz*0.2) g+=halo(dx, (r.y1+r.y2)/2, ds, -90);
+  return g;
 }
 
 /* ===== 印刷図：撤去シンボル／有効寸法（画面の drawSymbol を mm 座標で再現） ===== */
