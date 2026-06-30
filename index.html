@@ -1326,6 +1326,8 @@ function buildFloorSVG(floor, numbers){
   const eat=(x,y)=>{any=true;minx=Math.min(minx,x);miny=Math.min(miny,y);maxx=Math.max(maxx,x);maxy=Math.max(maxy,y);};
   floor.shapes.forEach(s=>s.verts.forEach(v=>eat(v.x,v.y)));
   floor.texts.forEach(t=>eat(t.x,t.y));
+  (floor.symbols||[]).forEach(sym=>{ if(sym.a&&sym.b){eat(sym.a.x,sym.a.y);eat(sym.b.x,sym.b.y);} else if(sym.x!=null)eat(sym.x,sym.y); });
+  (floor.effdims||[]).forEach(d=>{ if(d.a&&d.b){eat(d.a.x,d.a.y);eat(d.b.x,d.b.y);} });
   if(!any) return '<svg viewBox="0 0 10 10"></svg>';
   const bw=maxx-minx,bh=maxy-miny,span=Math.max(bw,bh,1000);
   const pad=span*0.20, off=span*0.06, fz=span*0.028, nz=span*0.055, lw=span*0.0016;
@@ -1361,6 +1363,9 @@ function buildFloorSVG(floor, numbers){
       for(let i=0;i<sh.verts.length;i++){ s+=dimEdge(sh.verts[i],sh.verts[(i+1)%sh.verts.length],{x:cx,y:cy},off,lw,fz); }
     }
   });
+  // 撤去シンボル＋有効寸法（現況の主役＝撤去物を紙にも出す）
+  (floor.symbols||[]).forEach(sym=>{ s+=printSymbolSVG(sym, span, lw, fz); });
+  (floor.effdims||[]).forEach(d=>{ s+=printEffDimSVG(d, lw, fz); });
   floor.texts.forEach(t=>{ s+=`<text x="${t.x}" y="${t.y}" font-size="${fz*1.15}" fill="#1a1a1a">${esc(t.str||'')}</text>`; });
   return s+'</svg>';
 }
@@ -1385,6 +1390,51 @@ function dimEdge(a,b,c,off,lw,fz){
     +`<line x1="${b.x}" y1="${b.y}" x2="${bx}" y2="${by}" stroke="#1a1a1a" stroke-width="${lw}"/>`
     +`<line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}" stroke="#1a1a1a" stroke-width="${lw}"/>`
     +`<text x="${tx}" y="${ty-fz*0.4}" font-size="${fz}" text-anchor="middle" transform="rotate(${ang} ${tx} ${ty})" fill="#1a1a1a">${comma(len)}</text>`;
+}
+
+/* ===== 印刷図：撤去シンボル／有効寸法（画面の drawSymbol を mm 座標で再現） ===== */
+function printSymbolSVG(sym, span, lw, fz){
+  const def=SYMBOL_DEFS[sym.type]; if(!def) return '';
+  const ink='#1a1a1a', sr=span*0.024;
+  if(def.line && sym.a && sym.b){
+    const len=dist(sym.a,sym.b), n=Math.max(1,Math.floor(len/300)), t=span*0.008;
+    let nx=(sym.b.y-sym.a.y), ny=-(sym.b.x-sym.a.x); const nl=Math.hypot(nx,ny)||1; const ux=nx/nl*t, uy=ny/nl*t;
+    let g=`<line x1="${sym.a.x}" y1="${sym.a.y}" x2="${sym.b.x}" y2="${sym.b.y}" stroke="${ink}" stroke-width="${lw*1.6}"/>`;
+    for(let i=0;i<=n;i++){ const u=i/n, px=sym.a.x+(sym.b.x-sym.a.x)*u, py=sym.a.y+(sym.b.y-sym.a.y)*u;
+      g+=`<line x1="${px-ux}" y1="${py-uy}" x2="${px+ux}" y2="${py+uy}" stroke="${ink}" stroke-width="${lw*0.7}"/>`; }
+    const mx=(sym.a.x+sym.b.x)/2, my=(sym.a.y+sym.b.y)/2;
+    return g+`<text x="${mx}" y="${my-span*0.012}" font-size="${fz}" text-anchor="middle" fill="${ink}">${def.mark}</text>`;
+  }
+  if(sym.x==null) return '';
+  const cx=sym.x, cy=sym.y; let shp;
+  if(sym.type==='well') shp=`<circle cx="${cx}" cy="${cy}" r="${sr}" fill="#fff" stroke="${ink}" stroke-width="${lw}"/><circle cx="${cx}" cy="${cy}" r="${sr*0.62}" fill="none" stroke="${ink}" stroke-width="${lw*0.7}"/>`;
+  else if(def.rectish) shp=`<rect x="${cx-sr*1.3}" y="${cy-sr*0.8}" width="${sr*2.6}" height="${sr*1.6}" rx="${sr*0.3}" fill="#fff" stroke="${ink}" stroke-width="${lw}"/>`;
+  else if(sym.type==='tree') shp=`<circle cx="${cx}" cy="${cy}" r="${sr}" fill="#fff" stroke="${ink}" stroke-width="${lw}"/><line x1="${cx}" y1="${cy+sr}" x2="${cx}" y2="${cy+sr*1.5}" stroke="${ink}" stroke-width="${lw}"/>`;
+  else if(sym.type==='elec_drop') shp=`<circle cx="${cx}" cy="${cy}" r="${sr*0.8}" fill="#fff" stroke="${ink}" stroke-width="${lw}"/>`;
+  else shp=`<rect x="${cx-sr*0.85}" y="${cy-sr*0.85}" width="${sr*1.7}" height="${sr*1.7}" rx="${sr*0.35}" fill="#fff" stroke="${ink}" stroke-width="${lw}"/>`;
+  return shp+`<text x="${cx}" y="${cy}" font-size="${Math.max(fz*0.9,sr*0.95)}" text-anchor="middle" dominant-baseline="central" fill="${ink}">${def.mark}</text>`;
+}
+function printEffDimSVG(d, lw, fz){
+  if(!d.a||!d.b) return '';
+  const mx=(d.a.x+d.b.x)/2, my=(d.a.y+d.b.y)/2;
+  return `<line x1="${d.a.x}" y1="${d.a.y}" x2="${d.b.x}" y2="${d.b.y}" stroke="#1a1a1a" stroke-width="${lw}" stroke-dasharray="${comma(Math.round(fz*0.6))} ${comma(Math.round(fz*0.4))}"/>`
+    +`<text x="${mx}" y="${my-fz*0.4}" font-size="${fz}" text-anchor="middle" fill="#1a1a1a">${comma(Math.round(dist(d.a,d.b)))}</text>`;
+}
+// 撤去数量：各シンボルの入力属性（塀の長さは自動）を1行にまとめる
+function symQtyText(sym){
+  const def=SYMBOL_DEFS[sym.type], parts=[];
+  def.attrs.forEach(at=>{
+    if(at.auto && def.line && sym.a && sym.b){ parts.push(`${at.label}=${fmt2(dist(sym.a,sym.b)/1000)}`); return; }
+    const v=sym.qty_attr ? sym.qty_attr[at.k] : '';
+    if(v!=='' && v!=null && v!==undefined) parts.push(`${at.label}=${esc(String(v))}`);
+  });
+  if(sym.note) parts.push(`(${esc(sym.note)})`);
+  return parts.join('　');
+}
+function teardownRows(){
+  const rows=[];
+  project.floors.forEach(f=> (f.symbols||[]).forEach(sym=>{ const def=SYMBOL_DEFS[sym.type]; if(def) rows.push({mark:def.mark,label:def.label,qty:symQtyText(sym)}); }));
+  return rows;
 }
 
 function buildPrint(){
@@ -1420,9 +1470,17 @@ function buildPrint(){
   let panels='';
   drawFloors.forEach(f=>{ panels+=`<section class="p-panel"><h3>${esc(f.name)}平面図</h3><div class="p-cv">${buildFloorSVG(f,numbers)}</div></section>`; });
 
+  // 撤去数量表（撤去シンボルがあれば左下に。無ければ出さない）
+  const td=teardownRows();
+  let teardown='<div></div>';
+  if(td.length){
+    const trs=td.map(r=>`<tr><td class="no">${esc(r.mark)}</td><td>${esc(r.label)}</td><td>${r.qty}</td></tr>`).join('');
+    teardown=`<div class="p-td"><table class="p-cl"><tr><td colspan="3" class="tdh">撤去数量表</td></tr>${trs}</table></div>`;
+  }
+
   const title=`${esc(project.meta.title||'○○様邸 解体工事')}　現況測量図（求積図）　S ＝ 1 / ${printScale}`;
   return `<div class="p-frame"><div class="p-draw">${panels}</div>`
-    +`<div class="p-footer"><div class="p-clrow"><div class="p-calc"><table class="p-cl">${rows}</table></div></div>`
+    +`<div class="p-footer"><div class="p-clrow">${teardown}<div class="p-calc"><table class="p-cl">${rows}</table></div></div>`
     +`<div class="p-title">${title}</div></div></div>`;
 }
 
@@ -1444,8 +1502,10 @@ const PRINT_CSS=`
   .p-cv{ flex:1; position:relative; }
   .p-cv svg{ position:absolute; inset:0; width:100%; height:100%; }
   .p-footer{ flex:none; margin-top:5mm; display:flex; flex-direction:column; gap:3mm; }
-  .p-clrow{ display:flex; justify-content:flex-end; }
+  .p-clrow{ display:flex; justify-content:space-between; align-items:flex-end; gap:6mm; }
   .p-calc{ border:0.6px solid #1a1a1a; padding:2.5mm 4mm; }
+  .p-td{ border:0.7px solid #0ABAB5; padding:2.5mm 4mm; align-self:flex-end; }
+  .p-td .tdh{ font-weight:700; color:#0F6E56; padding-bottom:1mm; }
   table.p-cl{ border-collapse:collapse; font-size:3.3mm; }
   table.p-cl td{ padding:1.1mm 2.6mm; white-space:nowrap; }
   table.p-cl td.no{ text-align:center; width:7mm; }
